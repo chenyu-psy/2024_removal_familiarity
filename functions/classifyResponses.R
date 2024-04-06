@@ -3,6 +3,7 @@ classifyRes <-function (
     .data,
     initial = initial_item,
     final = final_item,
+    npl = npl_items,
     answer = answer,
     updPos = updPos,
     groupLevel = c(participant, block, trial)) {
@@ -15,8 +16,8 @@ classifyRes <-function (
       {{answer}} %in% {{final}}[{{updPos}}=="no"] & {{answer}}!="#" ~ "TransOld",
       {{answer}}=={{initial}} & {{answer}}!="#" & {{updPos}}=="yes" ~ "OutSame",
       {{answer}} %in% {{initial}} & {{answer}}!="#" & {{updPos}}=="no" ~ "OutOther",
-      is.na({{answer}}) ~ "NoRes",
-      TRUE ~ "NPL"
+      stringr::str_detect({{npl}},{{answer}}) ~ "NPL",
+      TRUE ~ "NoRes"
     )) %>% 
     ungroup() %>% 
     mutate(value = 1) %>% 

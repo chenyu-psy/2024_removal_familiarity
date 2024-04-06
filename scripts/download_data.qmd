@@ -57,7 +57,7 @@ Table_jatos_files <- read_csv("./raw_data/Data_path_Exp1.csv")
 
 # Filter participants who did not complete the experiment
 Table_jatos_files_filtered <- Table_jatos_files %>% 
-  filter(studyState == "FINISHED")
+  filter(studyState == "FINISHED" | resultID == 13672)
 
 # Read participants' data
 Raw_Exp1 <- read_json_files(Table_jatos_files_filtered$file)
@@ -66,7 +66,7 @@ unique(Raw_Exp1$participant)
 
 Data_response <- Raw_Exp1 %>% 
   filter(expPart == "experiment") %>% 
-  select(participant, blockID, trialID, screenID, character, stepID, position, initial_item, final_item, response, acc, rt) %>% 
+  select(participant, blockID, trialID, screenID, character, stepID, position, initial_item, final_item, npl_items, response, acc, rt) %>% 
   mutate(
     updPos = ifelse(initial_item == final_item, "no","yes"),
     response = as.character(response)) %>% 

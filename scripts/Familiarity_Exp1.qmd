@@ -78,7 +78,7 @@ Data_Res <- Raw_Res %>%
   classifyRes(groupLevel = c("participant", "block", "trial"))
 
 # Import Survey data
-Raw_RT <- read_csv("./data/Data_Exp1_Survey.csv")
+Data_Survey <- read_csv("./data/Data_Exp1_Survey.csv")
 
 ```
 
@@ -101,9 +101,9 @@ Raw_RT <- read_csv("./data/Data_Exp1_Survey.csv")
 Table_response <- Data_Res %>% 
   select(
     participant, condition, ends_with("New"), 
-    ends_with("Old"), starts_with("Out"), NPL) %>% 
+    ends_with("Old"), starts_with("Out"), NPL, NoRes) %>% 
   pivot_longer(
-    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"),NPL), 
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"),NPL, NoRes), 
     names_to = "response", values_to = "value") %>% 
   summarySE(DV = value, within = c("condition"), between = c("response"), group = "participant") %>% 
   mutate( 
@@ -136,7 +136,7 @@ Table_response <- Data_Res %>%
     ggplot(aes(x = response, y = mean, color = condition))+
     geom_point(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,0.7)+
+    ylim(0,1)+
     labs(
       x = "Item type", y = "Proportion of correct", 
       color = "Condition")+
@@ -154,7 +154,7 @@ Table_response <- Data_Res %>%
 ### Transpositions
 ```{r}
 (
-  Plot_Res_Correct <- Table_response %>% 
+  Plot_Res_Trans <- Table_response %>% 
     filter(str_detect(response,"Trans")) %>%
     mutate(
       response = factor(
@@ -165,7 +165,7 @@ Table_response <- Data_Res %>%
     ggplot(aes(x = response, y = mean, color = condition))+
     geom_point(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,0.7)+
+    ylim(-0.04,0.4)+
     labs(
       x = "Item type", y = "Proportion of response", 
       color = "Condition")+
@@ -181,7 +181,7 @@ Table_response <- Data_Res %>%
 ### Outdated items
 ```{r}
 (
-  Plot_Res_Correct <- Table_response %>% 
+  Plot_Res_Outdated <- Table_response %>% 
     filter(str_detect(response,"Out")) %>%
     mutate(
       response = factor(
@@ -192,17 +192,36 @@ Table_response <- Data_Res %>%
     ggplot(aes(x = response, y = mean, color = condition))+
     geom_point(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,0.7)+
+    ylim(-0.04,0.4)+
     labs(
       x = "Item type", y = "Proportion of response", 
       color = "Condition")+
     theme(
-      legend.position = "None",
+      # legend.position = "None",
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5))
 )
 
 ```
 
+### NPL
+```{r}
+(
+  Plot_Res_NPL <- Table_response %>% 
+    filter(str_detect(response,"NPL|NoRes")) %>%
+    ggplot(aes(x = response, y = mean, color = condition))+
+    geom_point(position = dodge1)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge1, width = 0.1)+
+    ylim(-0.04,0.4)+
+    labs(
+      x = "Condition", y = "Proportion of response", 
+      color = "Condition")+
+    theme(
+      # legend.position = "None",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
 
+
+```
 
