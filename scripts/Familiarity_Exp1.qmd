@@ -1,0 +1,208 @@
+---
+title: "data_analysis"
+author: "Chenyu Li"
+format: html
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+# 0 Initial setting
+
+## 1.1 clear workspacce and set default color
+
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names=TRUE))
+options(digits = 3)
+
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+```
+
+## 1.2 Packages, theme setting and path
+
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse", "brms","ggpubr", "job","tidybayes","emmeans","bayestestR")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+# install the missing packages
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+
+# theme
+theme_set(theme_bw())
+dodge1 = position_dodge(.1)
+dodge2 = position_dodge(.2)
+dodge3 = position_dodge(.3)
+dodge4 = position_dodge(.4)
+
+# task name
+task <- "Exp1"
+model_other_path <- str_glue("./models/Model-{task}/Models_Others/")
+model_path <- str_glue("./models/Model-{task}/Models/")
+sample_path <- str_glue("./models/Model-{task}/Sample/")
+figure_path <- str_glue("./figures/figures-{task}/")
+log_path <- "./models/"
+bf_path = "./models/BayesFactor/"
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(model_path), showWarnings = FALSE)
+dir.create(file.path(sample_path), showWarnings = FALSE)
+dir.create(file.path(figure_path), showWarnings = FALSE)
+
+```
+
+
+# 2 Data processing
+
+## 2.1 Import data
+
+```{r}
+
+# Import Response data
+Raw_Res <- read_csv("./data/Data_Exp1_Res.csv")
+
+# Category and count response
+Data_Res <- Raw_Res %>% 
+  filter(screenID == "retrieval") %>% 
+  mutate(
+    participant = factor(participant)) %>% 
+  classifyRes(groupLevel = c("participant", "block", "trial"))
+
+# Import Survey data
+Raw_RT <- read_csv("./data/Data_Exp1_Survey.csv")
+
+```
+
+## 2.2 Data cleaning
+
+```{r}
+
+
+
+
+```
+
+
+# Ploting data
+
+## Data and data transform
+
+```{r}
+
+Table_response <- Data_Res %>% 
+  select(
+    participant, condition, ends_with("New"), 
+    ends_with("Old"), starts_with("Out"), NPL) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"),NPL), 
+    names_to = "response", values_to = "value") %>% 
+  summarySE(DV = value, within = c("condition"), between = c("response"), group = "participant") %>% 
+  mutate( 
+    condition = factor(
+      condition, 
+      levels = c("cn","kr"), 
+      labels = c("Familiar (Chinese)", "Unfamiliar (Korean)")),
+    # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
+  select(!c(ci,se,n))
+
+```
+
+
+## 3.2.2 Plot
+
+
+### Correct
+```{r}
+(
+  Plot_Res_Correct <- Table_response %>% 
+    filter(str_detect(response,"Correct")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("CorrectOld","CorrectNew"), 
+        labels = c("Origianl items","New items"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = condition))+
+    geom_point(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    ylim(0,0.7)+
+    labs(
+      x = "Item type", y = "Proportion of correct", 
+      color = "Condition")+
+    theme(
+      legend.justification = c(1,0),
+      legend.position = "inside",
+      legend.position.inside = c(0.98,0.02),
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
+
+```
+
+
+### Transpositions
+```{r}
+(
+  Plot_Res_Correct <- Table_response %>% 
+    filter(str_detect(response,"Trans")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("TransOld","TransNew"), 
+        labels = c("Origianl items","New items"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = condition))+
+    geom_point(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    ylim(0,0.7)+
+    labs(
+      x = "Item type", y = "Proportion of response", 
+      color = "Condition")+
+    theme(
+      legend.position = "None",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
+
+```
+
+
+### Outdated items
+```{r}
+(
+  Plot_Res_Correct <- Table_response %>% 
+    filter(str_detect(response,"Out")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("OutSame","OutOther"), 
+        labels = c("Original position","Other positions"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = condition))+
+    geom_point(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    ylim(0,0.7)+
+    labs(
+      x = "Item type", y = "Proportion of response", 
+      color = "Condition")+
+    theme(
+      legend.position = "None",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
+
+```
+
+
+
