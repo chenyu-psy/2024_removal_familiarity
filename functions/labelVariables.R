@@ -6,8 +6,8 @@ labelCondition <- function(.data) {
     mutate(
       condition = factor(
         condition,
-        levels = c("keeping","encoding","removal","updating"),
-        labels = c("Keeping", "Encoding", "Removal", "Updating")
+        levels = c("cn","kr"),
+        labels = c("Familiar (Chinese)", "Unfamiliar (Korean)")
       ))
   
   

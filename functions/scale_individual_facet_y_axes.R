@@ -39,7 +39,7 @@
 #'   scale_individual_facet_y_axes(ylims)
 #' ======================================
 #' 
-scale_inidividual_facet_y_axes = function(plot, ylims) {
+scale_individual_facet_y_axes = function(plot, ylims) {
   init_scales_orig = plot$facet$init_scales
   
   init_scales_new = function(...) {

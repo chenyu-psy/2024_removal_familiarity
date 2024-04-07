@@ -1,0 +1,845 @@
+---
+title: "Combined plots"
+author: "Chenyu"
+date: "2024/01/05"
+output:
+  html_document:
+  toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+
+# for knitting
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 0 Initial setting
+
+## 0.1 clear workspacce and set default color
+
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names=TRUE))
+options(digits = 3)
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+```
+
+## 0.2 Packages, theme setting and path
+
+```{r primary setting, include=FALSE}
+
+# library package
+packages = c("tidyverse","ggpubr","tidybayes")
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+
+# theme
+theme_set(theme_bw(base_size = 11))
+dodge1 = position_dodge(.1)
+dodge2 = position_dodge(.2)
+dodge3 = position_dodge(.3)
+dodge4 = position_dodge(.4)
+
+
+# task name
+data_path <- "./figures/figures-Data/"
+figure_path <- "./figures/figures-Parameters/"
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(figure_path), showWarnings = FALSE)
+
+```
+
+# 0 Load data
+
+```{r}
+
+# Experiment 1
+Post_Exp1_M3_initial <- str_glue("{data_path}Post_Exp1_M3_initial.rds") %>% readRDS()
+# Post_Exp1_M3_final <- str_glue("{data_path}Post_Exp1_M3_SS6_final.rds") %>% readRDS()
+
+
+
+```
+
+
+
+# 1 Removal parameters
+
+## 1.0 Data preparation
+
+```{r}
+
+Table_Exp1_M3_r <- Post_Exp1_M3_initial %>% 
+  select(.chain, .iteration, .draw, condition, ra, rc) %>% 
+  pivot_longer(cols = c(ra, rc), names_to = "coef", values_to = "post") %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef)
+  ) %>% 
+  labelCondition()
+
+
+```
+
+## 1.1 Experiment 1
+```{r}
+
+Plot_Exp1_ra <- Table_Exp1_M3_r %>%
+  filter(coef == "ra") %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    title = "Experiment 1", tag = "A")+
+  ylim(0,1)+
+  theme(
+    strip.text = element_text(size = 11),
+    axis.title = element_blank())
+
+Plot_Exp1_rc <- Table_Exp1_M3_r %>%
+  mutate(setsize = "Set-size 6") %>% 
+  filter(coef == "rc") %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    title = "Experiment 1", tag = "B")+
+  ylim(0,1)+
+  theme(
+    strip.text = element_text(size = 11),
+    axis.title = element_blank())
+
+```
+
+
+## 1.2 Experiment 2
+
+```{r}
+
+Plot_Exp2_ra <- Table_Exp2_M3_r %>% 
+  filter(coef %in% c("ra")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    title = "Experiment 2",
+    tag = "C")+
+  facet_wrap(~ setsize)+
+  ylim(0,1)+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  theme(
+    strip.text = element_text(size = 11),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title = element_blank())
+
+Plot_Exp2_rc <- Table_Exp2_M3_r %>% 
+  filter(coef %in% c("rc")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    title = "Experiment 2",
+    tag = "D")+
+  facet_wrap(~ setsize)+
+  ylim(0,1)+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  theme(
+    strip.text = element_text(size = 11),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.title = element_blank())
+
+
+```
+
+
+
+
+## 1.4 Combine
+
+```{r}
+
+## Parameter ra
+
+Plot_M3_para_ra_Exp12 <- ggarrange(
+  Plot_Exp1_ra,Plot_Exp2_ra,
+  ncol = 2, nrow = 1, widths = c(1.3,2), 
+  legend = "none")
+
+Plot_M3_para_ra <- ggarrange(
+  NA, Plot_M3_para_ra_Exp12, Plot_Exp3_ra,
+  nrow = 3, heights = c(0.05,1,1), legend = "none") %>% 
+  annotate_figure(
+    top = text_grob(
+      expression(bold("Item memory of outdated items" ~ (r[a]))),  
+      color = "black", face = "bold", size = 15),
+    bottom = text_grob("Condition", 
+                       color = "black", size = 12))
+
+## Parameter rc
+
+Plot_M3_para_rc_Exp12 <- ggarrange(
+  Plot_Exp1_rc, Plot_Exp2_rc, 
+  ncol = 2, nrow = 1, widths = c(1.3,2), 
+  legend = "none")
+
+Plot_M3_para_rc <- ggarrange(
+  NA, Plot_M3_para_rc_Exp12, Plot_Exp3_rc,
+  nrow = 3, heights = c(0.05,1,1), legend = "none") %>% 
+  annotate_figure(
+    top = text_grob(
+      expression(bold("Binding memory of outdated items" ~ (r[c]))),  
+      color = "black", size = 15),
+    bottom = text_grob(
+      "Condition",
+      color = "black", size = 12))
+
+## Combine
+
+Plot_M3_para_r <- ggarrange(
+  Plot_M3_para_ra, NA, Plot_M3_para_rc,
+  ncol = 3, nrow = 1, widths = c(1,0.1,1), 
+  legend = "none")
+
+
+ggsave(
+  filename = str_glue("Plot_M3_para_r.pdf"),
+  plot = Plot_M3_para_r,
+  path = figure_path,
+  width = 10, height = 7
+)
+
+```
+
+# 2 Memory parameters
+
+## 2.0 Data preparation
+
+```{r}
+
+Table_Exp1_M3_ac <- Post_Exp1_M3_initial %>% 
+  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2) %>% 
+  pivot_longer(cols = c(a1, a2, c1, c2), names_to = "coef", values_to = "post") %>% 
+  dplyr::filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef)
+  ) %>% 
+  labelCondition()
+
+```
+
+## 2.1 Experiment 1
+
+```{r}
+
+Plot_Exp1_M3_par_a <- Table_Exp1_M3_ac %>%
+  filter(str_detect(coef, "a")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Item memory", tag = "A")+
+  ylim(0,5)+
+  facet_grid( ~ coef, labeller = label_parsed)+
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    strip.text.y = element_blank())
+
+
+Plot_Exp1_M3_par_c <- Table_Exp1_M3_ac %>%
+  filter(coef %in% c("c1", "c2")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Binding memory", tag = "B")+
+  ylim(0,5)+
+  facet_grid( ~ coef, labeller = label_parsed)+
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank())
+
+```
+
+
+## 2.2 Experiment 2
+
+```{r}
+
+Plot_Exp2_M3_par_a <- Table_Exp2_M3_ac %>%
+  filter(coef=="a1") %>% 
+  mutate(
+    setsize = str_glue("Set-size~~{setsize}"),
+    coef = "Original~~items~~and~~New~~items~~(a)") %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Item memory", tag = "C")+
+  ylim(0,8.5)+
+  facet_grid(setsize ~ coef, labeller = label_parsed)+
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    strip.text.y = element_blank())
+
+
+Plot_Exp2_M3_par_c <- Table_Exp2_M3_ac %>%
+  filter(coef %in% c("c1", "c2")) %>% 
+  mutate(
+    setsize = str_glue("Set-size~~{setsize}"),
+    coef = factor(
+      coef,
+      levels = c("c1","c2"),
+      labels = c(
+        "Original~~items~~(c[1])",
+        "New~~items~~(c[2])"))
+    ) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Binding memory", tag = "D")+
+  ylim(0,8.5)+
+  facet_grid(setsize ~ coef, labeller = label_parsed)+
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.ticks.y = element_blank(),
+    axis.text.y = element_blank())
+
+
+```
+
+## 2.3 Combine
+
+```{r}
+
+Plot_Exp1_para_ac <- ggarrange(
+  Plot_Exp1_M3_par_a, Plot_Exp1_M3_par_c, 
+  ncol = 2, nrow = 1, 
+  widths = c(1, 2), legend = "none") %>% 
+  annotate_figure(
+    top = text_grob(
+      "Experiment 1",
+      color = "black", size = 15, hjust = 0, x = 0, face = "italic"))
+
+Plot_Exp2_para_ac <- ggarrange(
+  Plot_Exp2_M3_par_a, Plot_Exp2_M3_par_c, 
+  ncol = 2, nrow = 1, 
+  widths = c(1, 2), legend = "none") %>% 
+  annotate_figure(
+    top = text_grob(
+      "Experiment 2",
+      color = "black", size = 15, hjust = 0, x = 0, face = "italic"))
+
+Plot_M3_para_ac <- ggarrange(
+  Plot_Exp1_para_ac, NA, Plot_Exp2_para_ac, 
+  ncol = 1, nrow = 3,  heights = c(1.2, 0.1, 2), legend = "none") %>% 
+  annotate_figure(
+    bottom = text_grob(
+      "Condition",
+      color = "black", size = 12))
+
+
+ggsave(
+  filename = str_glue("Plot_M3_para_ac.pdf"),
+  plot = Plot_M3_para_ac,
+  path = figure_path,
+  width = 10, height = 10
+)
+
+
+
+```
+
+## 2.4 Experiment 3
+
+```{r}
+
+Plot_Exp3_para_a1 <- Table_Exp3_M3_ac %>% 
+  filter(coef %in% c("a1")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    x = "Condition", fill = "Condition", 
+    title = expression("Item memory of original items " ~ (a[1])),
+    tag = "A")+
+  facet_wrap(~ setsize)+
+  ylim(0,8)+
+  theme(
+    legend.position = "none",
+    strip.text = element_text(size = 10.5),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1))
+
+Plot_Exp3_para_c1 <- Table_Exp3_M3_ac %>% 
+  filter(coef %in% c("c1")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    x = "Condition", fill = "Condition", 
+    title = expression("Binding memory of original items " ~ (c[1])),
+    tag = "B")+
+  facet_wrap(~ setsize)+
+  ylim(0,8)+
+  theme(
+    legend.position = "none",
+    strip.text = element_text(size = 10.5),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1))
+
+
+Plot_Exp3_para_a2 <- Table_Exp3_M3_ac %>% 
+  filter(coef %in% c("a2")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    x = "Condition", fill = "Condition", 
+    title = expression("Item memory of new items " ~ (a[2])),
+    tag = "C")+
+  facet_wrap(~ setsize)+
+  ylim(0,8)+
+  scale_fill_manual(values = c("#FF7F6F","#2F7FC1","#FFBE7A"))+
+  theme(
+    legend.position = "none",
+    strip.text = element_text(size = 10.5),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1))
+
+Plot_Exp3_para_c2 <- Table_Exp3_M3_ac %>% 
+  filter(coef %in% c("c2")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    x = "Condition", fill = "Condition", 
+    title = expression("Binding memory of new items " ~ (c[2])),
+    tag = "D")+
+  facet_wrap(~ setsize)+
+  ylim(0,8)+
+  scale_fill_manual(values = c("#FF7F6F","#2F7FC1","#FFBE7A"))+
+  theme(
+    legend.position = "none",
+    strip.text = element_text(size = 10.5),
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 30, hjust = 1))
+
+
+Plot_Exp3_para_ac <- ggarrange(
+  Plot_Exp3_para_a1, Plot_Exp3_para_a2, Plot_Exp3_para_c1,  Plot_Exp3_para_c2, 
+  widths = c(4, 3, 4, 3),
+  ncol = 2, nrow = 2, legend = "none")
+
+ggsave(
+  filename = str_glue("Plot_Exp3_M3_para_ac.pdf"),
+  plot = Plot_Exp3_para_ac,
+  path = figure_path,
+  width = 10, height = 6
+)
+
+```
+
+
+# 3 Encoding rate and removal rate
+
+## 3.0 Data preparation
+```{r}
+
+Table_Exp3_M3_b <- Post_Exp3_M3_final %>% 
+  select(.chain, .iteration, .draw, condition, setsize, bec, brc) %>% 
+  pivot_longer(cols = c(bec, brc), names_to = "coef", values_to = "post") %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef, setsize)
+  ) %>% 
+  labelCondition()
+
+```
+
+## 3.1 slope
+```{r}
+
+Plot_M3_para_bec <- Table_Exp3_M3_b %>% 
+  filter(coef %in% c("bec")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  scale_fill_manual(values = c("#FF7F6F","#FFBE7A"))+
+  labs(
+    x = "Condition", fill = "Condition", 
+    title = expression("Encoding rate "~(beta[ec])),
+    tag = "A")+
+  facet_wrap(~ setsize)+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 11),
+    strip.text = element_text(size = 11),
+    axis.title.y = element_blank())
+
+Plot_M3_para_brc <- Table_Exp3_M3_b %>% 
+  filter(coef %in% c("brc")) %>% 
+  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(
+    x = "Condition", fill = "Condition", 
+    title = expression("Removal rate "~(beta[rc])),
+    tag = "B")+
+  facet_wrap(~ setsize)+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 11),
+    strip.text = element_text(size = 11),
+    axis.title.y = element_blank())
+
+Plot_M3_para_b <- ggarrange(Plot_M3_para_bec, Plot_M3_para_brc, 
+                            ncol = 2, nrow = 1, legend = "none")
+
+
+```
+
+## 3.2 encoding time and remvoal time
+
+### 3.2.1 data
+
+```{r}
+
+Table_remvoal <- Post_Exp3_M3_final %>% 
+  select(.chain, .iteration, .draw, condition, setsize, brc, yrc) %>% 
+  pivot_longer(cols = c(brc, yrc), names_to = "coef", values_to = "post") %>% 
+  dplyr::filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef, setsize)
+  ) %>% 
+  labelCondition() %>% 
+  summarise(
+    mean = mean(post),
+    .by = c(setsize, condition, coef)
+  ) %>% 
+  pivot_wider(names_from = coef, values_from = mean)
+
+
+Table_encoding <- Post_Exp3_M3_final %>% 
+  select(.chain, .iteration, .draw, condition, setsize, bec) %>% 
+  pivot_longer(cols = c(bec), names_to = "coef", values_to = "post") %>% 
+  dplyr::filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef, setsize)
+  ) %>% 
+  labelCondition() %>% 
+  summarise(
+    mean = mean(post),
+    .by = c(setsize, condition, coef)
+  ) %>% 
+  pivot_wider(names_from = coef, values_from = mean)
+
+```
+
+### 3.2.2 functions
+
+```{r}
+
+enc_fun <- function(t, slope) {
+  y = 1 - exp(-slope * t)
+  return (y)
+}
+
+rem_fun <- function(t, slope, asy) {
+  y = asy + (1-asy)*exp(-slope * t)
+  return (y)
+}
+
+```
+
+
+
+```{r}
+
+Plot_encoding_curve <- ggplot() +
+  geom_function(
+    fun = enc_fun, 
+    args = list(slope = Table_encoding$bec[1]), 
+    mapping = aes(linetype = "Set-size 4",color = "Encoding"),linewidth = 1)+
+  geom_function(
+    fun = enc_fun, 
+    args = list(slope = Table_encoding$bec[3]), 
+    mapping = aes(linetype = "Set-size 5",color = "Encoding"),linewidth = 1)+
+  geom_function(
+    fun = enc_fun, 
+    args = list(slope = Table_encoding$bec[5]), 
+    mapping = aes(linetype = "Set-size 6",color = "Encoding"),linewidth = 1)+
+  geom_function(
+    fun = enc_fun, 
+    args = list(slope = Table_encoding$bec[2]), 
+    mapping = aes(linetype = "Set-size 4",color = "Updating"),linewidth = 1)+
+  geom_function(
+    fun = enc_fun, 
+    args = list(slope = Table_encoding$bec[4]), 
+    mapping = aes(linetype = "Set-size 5",color = "Updating"),linewidth = 1)+
+  geom_function(
+    fun = enc_fun, 
+    args = list(slope = Table_encoding$bec[5]), 
+    mapping = aes(linetype = "Set-size 6",color = "Updating"),linewidth = 1)+
+  scale_color_manual(values = c("Encoding" = "#FF7F6F", "Updating" = "#FFBE7A"))+
+  scale_linetype_manual(values = c("Set-size 4" = "solid", "Set-size 5" = "dashed", "Set-size 6" = "dotted"))+
+  labs(x = "Processing time (s)",
+       y = expression("Proportional binding strength" ~ (e[c])),
+       title = "Time course of encoding",
+       color = "Condition", linetype = "Set size",tag="C")+
+  theme(
+    legend.justification = c(1, 0),
+    legend.position = c(0.98, 0.02),
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 11),
+    strip.text = element_text(size = 11))
+  
+Plot_removal_curve <- ggplot()+
+  geom_function(
+    fun = rem_fun, 
+    args = list(slope = Table_remvoal$brc[4], asy = Table_remvoal$yrc[4]),
+    mapping = aes(linetype = "Set-size 5",color = "Updating"),linewidth = 1)+
+  geom_function(
+    fun = rem_fun, 
+    args = list(slope = Table_remvoal$brc[6], asy = Table_remvoal$yrc[6]), 
+    mapping = aes(linetype = "Set-size 6",color = "Updating"),linewidth = 1)+
+  scale_color_manual(values = c("Updating" = "#FFBE7A"))+
+  scale_linetype_manual(values = c("Set-size 5" = "dashed", "Set-size 6" = "dotted"))+
+  ylim(0,1)+
+  labs(x = "Processing time (s)",
+       y = expression("Proportional binding strength" ~ (r[c])),
+       title = "Time course of removal",
+       tag = "D")+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 11),
+    axis.title = element_text(size = 11),
+    strip.text = element_text(size = 11))
+
+
+Plot_curve <- ggarrange(
+  Plot_encoding_curve, Plot_removal_curve, 
+  ncol = 2, nrow = 1)
+
+```
+
+3.3 Combine
+
+```{r}
+
+Plot_slope <- ggarrange(
+  Plot_M3_para_b,Plot_curve,nrow = 2)
+
+ggsave(
+  filename = str_glue("Plot_M3_slope.pdf"),
+  plot = Plot_slope,
+  path = figure_path,
+  width = 10, height = 7
+)
+
+```
+
+# 4 Experiment 3 (t5)
+
+## 4.1 Load data
+
+```{r}
+# Original model
+Post_Exp3_M3_SS4_initial <- str_glue("{data_path}Post_Exp3_M3_SS4_t5_initial.rds") %>% readRDS()
+Post_Exp3_M3_SS5_initial <- str_glue("{data_path}Post_Exp3_M3_SS5_t5_initial.rds") %>% readRDS()
+Post_Exp3_M3_SS6_initial <- str_glue("{data_path}Post_Exp3_M3_SS6_t5_initial.rds") %>% readRDS()
+Post_Exp3_M3_initial <- rbind(Post_Exp3_M3_SS4_initial, Post_Exp3_M3_SS5_initial, Post_Exp3_M3_SS6_initial)
+rm(Post_Exp3_M3_SS4_initial, Post_Exp3_M3_SS5_initial, Post_Exp3_M3_SS6_initial)
+
+# Final model
+Post_Exp3_M3_SS4_final <- str_glue("{data_path}Post_Exp3_M3_SS4_t5_final.rds") %>% readRDS()
+Post_Exp3_M3_SS5_final <- str_glue("{data_path}Post_Exp3_M3_SS5_t5_final.rds") %>% readRDS()
+Post_Exp3_M3_SS6_final <- str_glue("{data_path}Post_Exp3_M3_SS6_t5_final.rds") %>% readRDS()
+Post_Exp3_M3_final <- rbind(Post_Exp3_M3_SS4_final, Post_Exp3_M3_SS5_final, Post_Exp3_M3_SS6_final)
+rm(Post_Exp3_M3_SS4_final, Post_Exp3_M3_SS5_final, Post_Exp3_M3_SS6_final)
+
+```
+
+
+## 4.2 Removal parameters
+
+### 4.2.1 Data preparation
+
+```{r}
+
+Table_Exp1_M3_r <- Post_Exp3_M3_initial %>% 
+  filter(condition %in% c("removal", "updating")) %>% 
+  select(.chain, .iteration, .draw, condition, setsize, ra, rc) %>% 
+  pivot_longer(cols = c(ra, rc), names_to = "coef", values_to = "post") %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef, setsize)
+  ) %>% 
+  labelCondition()
+
+
+```
+
+### 4.2.2 Ploting data
+
+```{r}
+
+Plot_Exp3t5_M3_ra <- Table_Exp1_M3_r %>%
+  filter(coef == "ra") %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_grid(~ setsize, labeller = labeller(setsize = ~ paste0("Set-size ",.)))+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  labs(x = "Condition", tag = "A",
+       title = expression("Item memory of outdated items" ~ (r[a])))+
+  ylim(0,1)+
+  theme(
+    legend.position = "none",
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10.5),
+    axis.title = element_text(size = 11),
+    strip.text = element_text(size = 10.5))
+
+Plot_Exp3t5_M3_rc <- Table_Exp1_M3_r %>%
+  filter(coef == "rc") %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_grid(~ setsize, labeller = labeller(setsize = ~ paste0("Set-size ",.)))+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  labs(x = "Condition", tag = "B",
+       title = expression("Binding memory of outdated items" ~ (r[c])))+
+  ylim(0,1)+
+  theme(
+    legend.position = "none",
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10.5),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 10.5))
+
+
+Plot_Exp3t5_M3_r <- ggarrange(Plot_Exp3t5_M3_ra, Plot_Exp3t5_M3_rc, ncol = 2, nrow = 1)
+
+ggsave(
+  filename = str_glue("Plot_Exp3t5_M3_para_r.pdf"),
+  plot = Plot_Exp3t5_M3_r,
+  path = figure_path,
+  width = 12, height = 5
+)
+
+
+```
+
+
+
+## 4.3 Memory parameters
+
+### 4.3.1 Data preparation
+
+```{r}
+
+Table_Exp1_M3_ac <- Post_Exp3_M3_final %>% 
+  select(.chain, .iteration, .draw, condition, setsize, a1,c1,c2) %>% 
+  pivot_longer(cols = c(a1,c1,c2), names_to = "coef", values_to = "post") %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef, setsize)
+  ) %>% 
+  labelCondition()
+
+
+```
+
+### 4.3.2 Ploting data
+
+```{r}
+
+Plot_Exp3t5_M3_a <- Table_Exp1_M3_ac %>%
+  filter(coef == "a1") %>% 
+  mutate(coef = "Original items & New items") %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_grid(coef ~ setsize, labeller = labeller(setsize = ~ paste0("Set-size ",.)))+
+  labs(x = "Condition", tag = "A",
+       title = "Item memory (a)")+
+  ylim(0,5)+
+  theme(
+    legend.position = "none",
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10.5),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 10.5))
+
+Plot_Exp3t5_M3_c <- Table_Exp1_M3_ac %>%
+  filter(coef %in% c("c1", "c2")) %>% 
+  mutate(coef =factor(
+    coef,
+    levels = c("c1", "c2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_grid(coef~ setsize, labeller = labeller(setsize = ~ paste0("Set-size ",.)))+
+  labs(x = "Condition", tag = "B",
+       title = "Binding memory (c)")+
+  ylim(0,9)+
+  theme(
+    legend.position = "none",
+    axis.title.y = element_blank(),
+    axis.text = element_text(size = 10.5),
+    axis.title = element_text(size = 12),
+    strip.text = element_text(size = 10.5))
+
+Plot_Exp3t5_M3_ac <- ggarrange(Plot_Exp3t5_M3_a, Plot_Exp3t5_M3_c, ncol = 1, nrow = 2, heights = c(1.3, 2))
+
+ggsave(
+  filename = str_glue("Plot_Exp3t5_M3_para_ac.pdf"),
+  plot = Plot_Exp3t5_M3_ac,
+  path = figure_path,
+  width = 10, height = 9
+)
+
+
+```
+
+
+
+
+
+
+
+
