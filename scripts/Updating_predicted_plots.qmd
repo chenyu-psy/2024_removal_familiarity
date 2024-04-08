@@ -1,0 +1,1049 @@
+---
+title: "Predicted plots"
+author: "Chenyu"
+date: "2024/01/05"
+output:
+  html_document:
+  toc: yes
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+
+# for knitting
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 0 Initial setting
+
+## 0.1 clear workspacce and set default color
+
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names=TRUE))
+options(digits = 3)
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+```
+
+## 0.2 Packages, theme setting and path
+
+```{r primary setting, include=FALSE}
+
+# library package
+packages = c("tidyverse","ggpubr","tidybayes")
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+
+# theme
+theme_set(theme_bw(base_size = 11))
+
+# regular vector
+Levels_condition <- c("keeping","encoding","removal","updating")
+Labels_condition <- c("Keeping","Encoding","Removal","Updating")
+
+
+# data path and figure path
+data_path <- "./figures/figures-Data/"
+figure_path <- "./figures/figures-Predicted/"
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(figure_path), showWarnings = FALSE)
+
+```
+
+# 1 Experiment 1
+
+## 1.1 Load data
+
+```{r}
+
+# Load behavioral data
+Data_Exp1_Res <- str_glue("{data_path}Data_Exp1_Res.csv") %>% read_csv()
+
+# Load posterior data
+Post_Exp1_M3 <- str_glue("{data_path}Post_Exp1_M3_SS6_final.rds") %>% readRDS()
+
+# Load number of options for each response category
+Table_Exp1_nOpt <- str_glue("{data_path}Data_Exp1_nOptions.csv") %>% read_csv()
+
+```
+
+## 1.2 Behavioral data
+
+```{r}
+
+Table_Exp1_Res <- Data_Exp1_Res %>% 
+  filter(NoRes==0) %>% 
+  select(participant, condition, ends_with("New"), ends_with("Old"), starts_with("Out"),NPL) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"), NPL), 
+    names_to = "response", values_to = "value") %>% 
+  summarySE(
+    DV = value, 
+    within = c("condition"), 
+    between = c("response"), 
+    group = "participant") %>% 
+  mutate( # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)
+  ) %>% 
+  select(!c(ci,se,n)) %>% 
+  labelCondition()
+
+```
+
+## 1.3 Predicted data
+
+```{r}
+
+Predict_Exp1_M3 <- Post_Exp1_M3 %>% 
+  cross_join(data.frame(updPos = c("yes", "no"))) %>% 
+  mutate(
+    # Position
+    iP= ifelse(updPos == "yes", 1, 0),
+    # no removal parameters
+    iRU = ifelse(condition %in% c("encoding", "keeping"), 0, 1),
+    # no newly encoded items
+    iEU = ifelse(condition %in% c("keeping","removal"), 0, 1)) %>% 
+  recover_M3(
+    respOpts = Table_Exp1_nOpt,
+    formulas = c(
+      Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2),
+      TransOld ~ a1,
+      TransNew ~ iEU*(a2),
+      OutSame ~ iRU*iP*(ra*a1 + rc*c1),
+      OutOther ~ iRU*(ra*a1),
+      NPL ~ 0
+    ),
+    group = c(".chain", ".iteration", ".draw", "condition", "updPos")
+  ) %>%
+  mutate(
+    response = case_when(
+      response=="Correct" & updPos=="yes" ~ "CorrectNew",
+      response=="Correct" & updPos=="no" ~ "CorrectOld",
+      TRUE ~ response
+    ),
+    prob = ifelse(response=="OutSame" & updPos=="no", NA, prob)
+  ) %>% 
+  mutate(prob = mean(prob, na.rm=TRUE), .by = c(.chain, .iteration, .draw, condition, response)) %>%
+  filter(
+    !(str_detect(response, "Out") & condition %in% c("encoding", "keeping")),
+    !(response=="TransNew" & condition %in% c("keeping", "removal")),
+    !(response=="CorrectNew" & updPos=="no"),
+    !(response=="CorrectOld" & updPos=="yes")) %>%
+  select(-updPos) %>% 
+  distinct() %>%
+  filter(prob > quantile(prob, 5e-3),
+         prob < quantile(prob, 1-5e-3),
+         .by = c(condition, response)) %>% 
+  labelCondition()
+
+
+```
+
+## 1.4 Plot predicted results
+
+### 1.4.0 Data transformation
+
+```{r}
+
+transItem <- function(x, lower=0.1, upper = 0.6, rate = 0.3) {
+  pmin(x,lower) + rate*pmax(x-upper,0)
+}
+
+yticksItem = c(0, 0.02, 0.04, 0.06, 0.08, 0.6, 0.7, 0.8, 0.9, 1)
+
+```
+
+### 1.4.1 Original items
+
+```{r}
+
+(
+  Plot_Pred_Ori <- Table_Exp1_Res %>% 
+    filter(str_detect(response, "Old")) %>% 
+    mutate(response = factor(
+      response, 
+      levels = c("CorrectOld", "TransOld"),
+      labels = c("In position", "Other positions")),
+      mean = transItem(mean),
+      lower = transItem(lower),
+      upper = transItem(upper)) %>% 
+    ggplot(aes(x = condition, y = mean, linetype = response))+
+    geom_rect(aes(
+      xmin = -Inf, xmax = Inf, 
+      ymin = transItem(0.06), ymax = transItem(0.65)
+      ),fill = "white", color = "white")+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = response),
+      data = Predict_Exp1_M3 %>% 
+        filter(str_detect(response, "Old")) %>% 
+        mutate(response = factor(
+          response, 
+          levels = c("CorrectOld", "TransOld"),
+          labels = c("In position", "Other positions"))),
+      position = position_nudge(x = 0),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    scale_linetype_manual(values = c("solid","longdash"))+
+    scale_y_continuous(limits = c(0, transItem(1.02)), breaks = transItem(yticksItem), labels = yticksItem)+
+    labs(x = "Condition", title = "Original items", tag = "A")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+
+```
+
+### 1.4.2 New items
+
+```{r}
+
+(
+  Plot_Pred_New <- Table_Exp1_Res %>% 
+    filter(str_detect(response, "New")) %>% 
+    mutate(response = factor(
+      response, 
+      levels = c("CorrectNew", "TransNew"),
+      labels = c("In position", "Other positions")),
+      mean = transItem(mean),
+      lower = transItem(lower),
+      upper = transItem(upper)) %>% 
+    ggplot(aes(x = condition, y = mean, linetype = response))+
+    geom_rect(aes(
+      xmin = -Inf, xmax = Inf, 
+      ymin = transItem(0.06), ymax = transItem(0.65)
+      ),fill = "white", color = "white")+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = response),
+      data = Predict_Exp1_M3 %>% 
+        filter(str_detect(response, "New")) %>% 
+        mutate(response = factor(
+          response, 
+          levels = c("CorrectNew", "TransNew"),
+          labels = c("In position", "Other positions"))),
+      position = position_nudge(x = 0),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    scale_linetype_manual(values = c("solid","longdash"))+
+    scale_y_continuous(limits = c(0, transItem(1.02)), breaks = transItem(yticksItem), labels = yticksItem)+
+    labs(
+      x = "Condition",
+      title = "New items", tag = "B")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+
+```
+
+### 1.4.3 Outdated items
+
+```{r}
+(
+  Plot_Pred_Out <- Table_Exp1_Res %>% 
+    filter(str_detect(response, "Out"), condition %in% c("Removal", "Updating")) %>% 
+    mutate(response = factor(
+      response, 
+      levels = c("OutSame", "OutOther"),
+      labels = c("Original position", "Other positions"))) %>% 
+    ggplot(aes(x = condition, y = mean, linetype = response))+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = response),
+      data = Predict_Exp1_M3 %>% 
+        filter(str_detect(response, "Out")) %>% 
+        mutate(response = factor(
+          response, 
+          levels = c("OutSame", "OutOther"),
+          labels = c("Original position", "Other positions"))),
+      position = position_nudge(x = 0),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    scale_linetype_manual(values = c("solid","longdash"))+
+    scale_color_manual(values = c("#FF7F6F","#FFBE7A"))+
+    facet_wrap(~response)+
+    ylim(0,0.1)+
+    labs(title = "Outdated items", tag = "C")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+
+```
+
+### 1.4.4 Not-presented lures
+
+```{r}
+
+(
+  Plot_Pred_NPL <- Table_Exp1_Res %>% 
+    filter(str_detect(response, "NPL")) %>% 
+    ggplot(aes(x = condition, y = mean), linetype = "longdash")+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = "longdash"),
+      data = Predict_Exp1_M3 %>%
+        filter(str_detect(response, "NPL")),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    ylim(-0.01,0.08)+
+    labs(
+      title = "NPL", tag = "D")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+
+```
+
+### 1.4.5 Combine plots
+
+```{r}
+Plot_Pred_Error <- ggpubr::ggarrange(Plot_Pred_Out, Plot_Pred_NPL, ncol = 1, nrow = 2)
+
+Plot_Exp1_predicted <- ggpubr::ggarrange(
+  Plot_Pred_Ori, Plot_Pred_New, Plot_Pred_Error,nrow =1, widths = c(1,1,1)) %>% 
+  ggpubr::annotate_figure(
+    bottom = text_grob("Condition", size = 12, color = "black"),
+    left = text_grob("Proportion of response", size = 12, color = "black", rot = 90)
+  )
+
+ggsave(
+  path = figure_path,
+  filename = str_glue("Plot_Exp1_Predicted.pdf"),
+  plot = Plot_Exp1_predicted,
+  width = 12,
+  height = 6,
+)
+
+```
+
+# Experiment 2
+
+## 2.1 Load data
+
+```{r}
+
+# Load behavioral data
+Data_Exp2_Res <- str_glue("{data_path}Data_Exp2_Res.csv") %>% read_csv()
+
+# Load posterior data
+Post_Exp2_M3_SS4 <- str_glue("{data_path}Post_Exp2_M3_SS4_final.rds") %>% readRDS()
+Post_Exp2_M3_SS5 <- str_glue("{data_path}Post_Exp2_M3_SS5_final.rds") %>% readRDS()
+Post_Exp2_M3 <- bind_rows(Post_Exp2_M3_SS4, Post_Exp2_M3_SS5)
+
+# Load number of options for each response category
+Table_Exp2_nOpt <- str_glue("{data_path}Data_Exp2_nOptions.csv") %>% read_csv()
+
+```
+
+## 2.2 Behavioral data
+
+```{r}
+
+Table_Exp2_Res <- Data_Exp2_Res %>% 
+  filter(NoRes==0, setsize %in% c(4,5)) %>% 
+  select(
+    participant, condition, setsize,
+    ends_with("New"), ends_with("Old"), starts_with("Out"),NPL) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"), NPL), 
+    names_to = "response", values_to = "value") %>% 
+  summarySE(
+    DV = value, 
+    within = c("condition","setsize"), 
+    between = c("response"), 
+    group = "participant") %>% 
+  mutate( # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)
+  ) %>% 
+  select(!c(ci,se,n)) %>% 
+  labelCondition()
+
+```
+
+## 2.3 Predicted data
+
+```{r}
+
+Predict_Exp2_M3 <- Post_Exp2_M3 %>% 
+  cross_join(data.frame(updPos = c("yes", "no"))) %>% 
+  mutate(
+    # Position
+    iP= ifelse(updPos == "yes", 1, 0),
+    # no removal parameters
+    iRU = ifelse(condition %in% c("encoding", "keeping"), 0, 1),
+    # no newly encoded items
+    iKEU = ifelse(condition == "removal", 0, 1),
+    # whether mu2 is included or not
+    imu2 = ifelse(setsize==4 & updPos == "no", 0, 1)) %>% 
+  recover_M3(
+    respOpts = Table_Exp2_nOpt,
+    formulas = c(
+      Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2),
+      TransOld ~ imu2*a1,
+      TransNew ~ iKEU*(a2),
+      OutSame ~ iRU*iP*(ra*a1 + rc*c1),
+      OutOther ~ iRU*(ra*a1),
+      NPL ~ 0
+    ),
+    group = c(".chain", ".iteration", ".draw", "setsize", "condition", "updPos")
+  ) %>%
+  mutate(
+    response = case_when(
+      response=="Correct" & updPos=="yes" ~ "CorrectNew",
+      response=="Correct" & updPos=="no" ~ "CorrectOld",
+      TRUE ~ response
+    ),
+    prob = ifelse(response=="OutSame" & updPos=="no", NA, prob)
+  ) %>% 
+  mutate(prob = mean(prob, na.rm = TRUE), .by = c(.chain, .iteration, .draw, condition, response)) %>%
+  filter(
+    !(str_detect(response, "Out") & condition %in% c("encoding", "keeping")),
+    !(response=="TransNew" & condition %in% c("removal")),
+    !(response=="CorrectNew" & updPos=="no"),
+    !(response=="CorrectOld" & updPos=="yes")) %>%
+  select(-updPos) %>% 
+  distinct() %>%
+  filter(prob > quantile(prob, 0.005),
+         prob < quantile(prob, 0.995),
+         .by = c(setsize, condition, response)) %>% 
+  labelCondition()
+
+```
+
+## 2.4 Plot
+
+### 2.4.0 Data transformation
+
+```{r}
+
+transItem <- function(x, lower=0.075, upper = 0.65, rate = 0.3) {
+  pmin(x,lower) + rate*pmax(x-upper,0)
+}
+
+yticksItem = c(0, 0.02, 0.04, 0.06, 0.7, 0.8, 0.9, 1)
+
+```
+
+
+### 2.4.1 Original items
+
+```{r}
+
+(
+  Plot_Pred_Ori <- Table_Exp2_Res %>% 
+    filter(
+      str_detect(response, "Old")) %>% 
+    mutate(response = factor(
+      response, 
+      levels = c("CorrectOld", "TransOld"),
+      labels = c("In position", "Other positions")),
+      mean = transItem(mean),
+      lower = transItem(lower),
+      upper = transItem(upper)) %>% 
+    ggplot(aes(x = condition, y = mean, linetype=response))+
+    geom_rect(aes(
+      xmin = -Inf, xmax = Inf, 
+      ymin = transItem(0.06), ymax = transItem(0.7)
+      ),fill = "white", color = "white")+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = response),
+      data = Predict_Exp2_M3 %>% 
+        filter(
+          str_detect(response, "Old")) %>% 
+        mutate(response = factor(
+          response, 
+          levels = c("CorrectOld", "TransOld"),
+          labels = c("In position", "Other positions"))),
+      position = position_nudge(x = 0),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    scale_linetype_manual(values = c("solid","longdash"))+
+    scale_y_continuous(
+      limits = c(-0.005, transItem(1.03)), 
+      breaks = transItem(yticksItem), 
+      labels = yticksItem)+
+    facet_grid(rows = vars(setsize),labeller = labeller(setsize = ~ paste0("Set-size: ",.)))+
+    labs(title = "Original items", tag = "A")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      strip.text = element_text(size = 10.5),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+
+
+```
+
+
+### 2.4.2 New items
+
+```{r}
+
+
+(
+  Plot_Pred_New <- Table_Exp2_Res %>% 
+    filter(str_detect(response, "New")) %>% 
+    mutate(response = factor(
+      response, 
+      levels = c("CorrectNew", "TransNew"),
+      labels = c("In position", "Other positions")),
+      mean = transItem(mean),
+      lower = transItem(lower),
+      upper = transItem(upper)) %>% 
+    ggplot(aes(x = condition, y = mean, linetype=response))+
+    geom_rect(aes(
+      xmin = -Inf, xmax = Inf, 
+      ymin = transItem(0.06), ymax = transItem(0.7)
+      ),fill = "white", color = "white")+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = response),
+      data = Predict_Exp2_M3 %>% 
+        filter(str_detect(response, "New")) %>% 
+        mutate(response = factor(
+          response, 
+          levels = c("CorrectNew", "TransNew"),
+          labels = c("In position", "Other positions"))),
+      position = position_nudge(x = 0),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    scale_linetype_manual(values = c("solid","longdash"))+
+    scale_y_continuous(
+      limits = c(-0.005, transItem(1.03)), 
+      breaks = transItem(yticksItem), 
+      labels = yticksItem)+
+    facet_grid(rows = vars(setsize),labeller = labeller(setsize = ~ paste0("Set-size: ",.)))+
+    labs(
+      title = "New items", tag = "B")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      strip.text = element_text(size = 10.5),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+```
+
+### 2.4.3 Outdated items
+
+```{r}
+
+(
+  Plot_Pred_Error <- Table_Exp2_Res %>% 
+    filter(str_detect(response, "Out"), condition %in% c("Removal", "Updating")) %>% 
+    mutate(response = factor(
+      response, 
+      levels = c("OutSame", "OutOther"),
+      labels = c("Original position", "Other positions"))) %>% 
+    ggplot(aes(x = condition, y = mean, linetype=response))+
+    geom_point(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0, position = dodge2)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = response),
+      data = Predict_Exp2_M3 %>% 
+        filter(str_detect(response, "Out")) %>% 
+        mutate(response = factor(
+          response, 
+          levels = c("OutSame", "OutOther"),
+          labels = c("Original position", "Other positions"))),
+      position = position_nudge(x = 0),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+    scale_linetype_manual(values = c("solid","longdash"))+
+    facet_grid(setsize~response, labeller = labeller(setsize = ~ paste0("Set-size: ",.)))+
+    ylim(0,0.08)+
+    labs(
+      title = "Outdated items", tag = "C")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+      strip.text = element_text(size = 10.5),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+```
+
+
+### 2.4.4 Not-presented lures
+
+```{r}
+
+(
+  Plot_Pred_NPL <- Table_Exp2_Res %>% 
+    filter(str_detect(response, "NPL")) %>% 
+    ggplot(aes(x = condition, y = mean, linetype = "longdash"))+
+    geom_point()+
+    geom_errorbar(aes(ymax = upper, ymin = lower), width = 0)+
+    gghalves::geom_half_violin(
+      mapping = aes(x = condition, y = transItem(prob), fill = condition, linetype = "longdash"),
+      data = Predict_Exp2_M3 %>%
+        filter(str_detect(response, "NPL")),
+      color = NA, alpha = 0.8,
+      side = "r", nudge = 0.1)+
+    ylim(-0.01,0.08)+
+    facet_grid(rows = vars(setsize),labeller = labeller(setsize = ~ paste0("Set-size: ",.)))+
+    labs(title = "NPL", tag = "D")+
+    theme(
+      legend.position = "none",
+      title = element_text(size = 11),
+       strip.text = element_text(size = 10.5),
+      axis.text = element_text(size = 10.5),
+      axis.title = element_blank())
+)
+
+
+
+```
+
+
+### 2.4.5 Combine plots
+
+```{r}
+Plot_Pred_Error <- ggpubr::ggarrange(Plot_Pred_Out, Plot_Pred_NPL, ncol = 1, nrow = 2)
+
+Plot_Exp2_predicted <- ggpubr::ggarrange(
+  Plot_Pred_Ori, Plot_Pred_New, Plot_Pred_Error,nrow =1, widths = c(1,1,1)) %>% 
+  ggpubr::annotate_figure(
+    bottom = text_grob("Condition", size = 12, color = "black"),
+    left = text_grob("Proportion of response", size = 12, color = "black", rot = 90)
+  )
+
+ggsave(
+  path = figure_path,
+  filename = str_glue("Plot_Exp2_Predicted.pdf"),
+  plot = Plot_Exp2_predicted,
+  width = 12,
+  height = 8
+)
+
+```
+
+
+# Experiment 3
+
+## 3.1 Load data
+
+```{r}
+
+# Load behavioral data
+Data_Exp3_Res <- str_glue("{data_path}Data_Exp3_Res.csv") %>% read_csv()
+
+# Load posterior data
+Post_Exp3_M3_SS4 <- str_glue("{data_path}Post_Exp3_M3_SS4_final.rds") %>% readRDS()
+Post_Exp3_M3_SS5 <- str_glue("{data_path}Post_Exp3_M3_SS5_final.rds") %>% readRDS()
+Post_Exp3_M3_SS6 <- str_glue("{data_path}Post_Exp3_M3_SS6_final.rds") %>% readRDS()
+Post_Exp3_M3 <- bind_rows(Post_Exp3_M3_SS4, Post_Exp3_M3_SS5, Post_Exp3_M3_SS6)
+
+# Load number of options for each response category
+Table_Exp3_nOpt <- str_glue("{data_path}Data_Exp3_nOptions.csv") %>% read_csv()
+
+```
+
+## 3.2 Behavioral data
+
+```{r}
+
+Table_Exp3_Res <- Data_Exp3_Res %>% 
+  filter(NoRes==0) %>% 
+  select(
+    participant, condition, setsize, t,
+    ends_with("New"), ends_with("Old"), starts_with("Out"),NPL) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"), NPL), 
+    names_to = "response", values_to = "value") %>% 
+  summarySE(
+    DV = value, 
+    within = c("condition","setsize","t"), 
+    between = c("response"), 
+    group = "participant") %>% 
+  mutate( # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)
+  ) %>% 
+  select(!c(ci,se,n)) %>% 
+  labelCondition() %>% 
+  mutate(width = case_when(
+    setsize==4 ~ 0.1,
+    setsize==5 ~ 0.2,
+    setsize==6 ~ 0.3
+  ))
+
+Table_Exp3_t <- data.frame(
+  condition = rep(Levels_condition, each = 20),
+  t = rep(cumsum(1:20)/(max(cumsum(1:20)))*5, times=4))
+
+```
+
+## 3.3 Predicted data
+
+```{r}
+
+
+Predict_Exp3_M3 <- Post_Exp3_M3 %>%
+  slice_sample(n = 4000, by = c("setsize","condition")) %>% 
+  cross_join(data.frame(updPos=c("yes", "no"))) %>%
+  left_join(Table_Exp3_t, relationship = "many-to-many") %>% 
+  filter(!c(condition=="keeping" & updPos=="yes")) %>% 
+  mutate(
+    # Position
+   iP= ifelse(updPos == "yes", 1, 0),
+   # no removal parameters
+   iRU = ifelse(condition %in% c("removal", "updating"), 1, 0),
+   # no newly encoded items
+   iEU = ifelse(condition %in% c("encoding", "updating"), 1, 0),
+   # whether mu2 is included or not
+   imu2 = ifelse(setsize==4 & condition != "keeping" & updPos == "no", 0, 1),
+   # computer parameters
+   ec = 1 - iEU*exp(-bec * t),
+   ra = yra,
+   rc = yrc + (1 - yrc)*exp(-brc*t)
+  ) %>% 
+  recover_M3(
+    respOpts = Table_Exp3_nOpt,
+    formulas = c(
+      Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + ec*c2),
+      TransOld ~ imu2*a1,
+      TransNew ~ iEU*(a2),
+      OutSame ~ iRU*iP*(ra*a1 + rc*c1),
+      OutOther ~ iRU*(ra*a1),
+      NPL ~ 0),
+    group = c(".chain", ".iteration", ".draw", "condition", "setsize", "updPos", "t")
+    ) %>% 
+  mutate(
+    response = case_when(
+      response=="Correct"&updPos=="yes" ~ "CorrectNew",
+      response=="Correct"&updPos=="no" ~ "CorrectOld",
+      TRUE ~ response
+    )) %>%
+  mutate(
+    prob = mean(prob), .by = c(.chain, .iteration, .draw, condition, setsize, t, response)
+  ) %>% 
+  filter(
+    !(condition=="keeping" & response %in% str_detect(response, "Out|New")),
+    !(str_detect(response, "Out") & condition %in% c("encoding")),
+    !(response=="TransNew" & condition %in% c("removal")),
+    !(response=="CorrectNew" & updPos=="no"),
+    !(response=="CorrectOld" & updPos=="yes")
+  ) %>% 
+  labelCondition()
+
+
+Table_Exp3_Pred <- Predict_Exp3_M3 %>% 
+  summarise(
+    mean = mean(prob, na.rm = TRUE),
+    lower = quantile(prob, 0.005, na.rm = TRUE),
+    upper = quantile(prob, 0.995, na.rm = TRUE),
+    .by = c(condition, setsize, response, t)
+    ) %>% 
+  filter(
+   (setsize==4 & t <= 2) |
+   (setsize==5 & t <= 3.5) |
+   (setsize==6 & t <= 5)
+  ) %>% 
+  filter(mean > 1e-5)
+
+```
+
+## 3.4 Plot predicted results
+
+### 3.4.1 Original items
+
+```{r}
+
+Plot_Pred_Ori_Correct <- Table_Exp3_Res %>%
+  filter(str_detect(response, "CorrectOld")) %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "CorrectOld")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "CorrectOld")),
+    mapping = aes(ymin = lower, ymax = upper, fill = condition), 
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  facet_grid(condition~setsize, scales = "free_x", labeller = labeller(setsize = ~ paste0("Set-size: ",.)))+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "Original items (In position)", tag = "A")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+Plot_Pred_Ori_Incorrect <- Table_Exp3_Res %>%
+  filter(str_detect(response, "TransOld")) %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "TransOld")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "TransOld")), 
+    mapping = aes(x = t, ymin = lower, ymax = upper, fill = condition),
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  facet_grid(condition~setsize, scales = "free", labeller = labeller(setsize = ~ paste0("Set-size: ",.)))+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "Original items (Other positions)", tag = "B")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+
+Plot_Exp3_Pred_Ori <- ggarrange(Plot_Pred_Ori_Correct, Plot_Pred_Ori_Incorrect, ncol = 2)
+
+
+```
+
+
+### 3.4.2 New items
+
+```{r}
+
+Plot_Pred_New_Correct <- Table_Exp3_Res %>%
+  filter(str_detect(response, "CorrectNew"),condition!="Keeping") %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "CorrectNew")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "CorrectNew")),
+    mapping = aes(ymin = lower, ymax = upper, fill = condition), 
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  facet_grid(condition~setsize, scales = "free_x")+
+  scale_color_manual(values = c("#FF7F6F","#2F7FC1","#FFBE7A"))+
+  scale_fill_manual(values = c("#FF7F6F","#2F7FC1","#FFBE7A"))+
+  ylim(0.4, 1)+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "New items (In position)", tag = "C")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+Plot_Pred_New_Incorrect <- Table_Exp3_Res %>%
+  filter(str_detect(response, "TransNew"),condition!="Keeping") %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "TransNew")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "TransNew")), 
+    mapping = aes(x = t, ymin = lower, ymax = upper, fill = condition),
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  scale_color_manual(values = c("#FF7F6F","#2F7FC1","#FFBE7A"))+
+  scale_fill_manual(values = c("#FF7F6F","#FFBE7A"))+
+  facet_grid(condition~setsize, scales = "free_x")+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "New items (Other positions)", tag = "D")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+
+Plot_Exp3_Pred_New <- ggarrange(Plot_Pred_New_Correct, Plot_Pred_New_Incorrect, ncol = 2)
+
+```
+
+
+### 3.4.3 Outdated items
+
+```{r}
+
+Plot_Pred_Out_Same <- Table_Exp3_Res %>%
+  filter(str_detect(response, "OutSame"),condition%in%c("Removal","Updating")) %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "OutSame")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "OutSame")),
+    mapping = aes(ymin = lower, ymax = upper, fill = condition), 
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  facet_grid(condition~setsize, scales = "free_x")+
+  scale_color_manual(values = c("#2F7FC1","#FFBE7A"))+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "Outdated items (In position)", tag = "A")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+Plot_Pred_Out_Other <- Table_Exp3_Res %>%
+  filter(str_detect(response, "OutOther"),condition%in%c("Removal","Updating")) %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "OutOther")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "OutOther")), 
+    mapping = aes(x = t, ymin = lower, ymax = upper, fill = condition),
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  scale_color_manual(values = c("#2F7FC1","#FFBE7A"))+
+  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
+  facet_grid(condition~setsize, scales = "free_x")+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "Outdated items (Other positions)", tag = "B")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+
+Plot_Exp3_Pred_Out <- ggarrange(Plot_Pred_Out_Same, Plot_Pred_Out_Other, nrow = 2)
+
+
+```
+
+
+
+### 3.4.4 Not-presented lures
+
+```{r}
+
+
+Plot_Exp3_Pred_NPL <- Table_Exp3_Res %>%
+  filter(str_detect(response, "NPL"),) %>%
+  ggplot(aes(x = t, y = mean, color = condition, group = condition))+
+  geom_point()+
+  geom_line()+
+  geom_line(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "NPL")), 
+    mapping = aes(x = t, y = mean, color = condition, group = condition),
+    linetype = "longdash"
+  )+
+  geom_ribbon(
+    data = Table_Exp3_Pred %>% filter(str_detect(response, "NPL")), 
+    mapping = aes(x = t, ymin = lower, ymax = upper, fill = condition),
+    color = NA,
+    alpha = 0.2
+  )+
+  geom_errorbar(aes(ymin = lower, ymax = upper, width = width))+
+  facet_grid(condition~setsize, scales = "free_x")+
+  labs(
+    x = "Processing time (s)", y = "Proportion of response",
+    title = "NPL", tag = "C")+
+  theme(
+    legend.position = "none",
+    # axis.title = element_blank()
+  )
+
+
+
+```
+
+### 3.4.5 All together
+
+```{r}
+
+Plot_Exp3_Pred_Ori_New <- ggarrange(Plot_Exp3_Pred_Ori, Plot_Exp3_Pred_New, nrow = 2, heights = c(4.5,3.5))
+
+ggsave(
+  path = figure_path,
+  filename = str_glue("Plot_Exp3_Predicted_Original_New.pdf"),
+  plot = Plot_Exp3_Pred_Ori_New,
+  width = 12,
+  height = 10
+)
+
+
+
+Plot_Exp3_Pred_Out_NPL <- ggarrange(Plot_Exp3_Pred_Out, Plot_Exp3_Pred_NPL, ncol= 2)
+
+ggsave(
+  path = figure_path,
+  filename = str_glue("Plot_Exp3_Predicted_Outdated_NPL.pdf"),
+  plot = Plot_Exp3_Pred_Out_NPL,
+  width = 12,
+  height = 8
+)
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+

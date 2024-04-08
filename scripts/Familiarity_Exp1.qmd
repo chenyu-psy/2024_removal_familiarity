@@ -173,10 +173,6 @@ Table_response <- Data_Res %>%
       axis.text = element_text(size = 10.5))
 )
 
-
-
-
-
 ```
 
 
@@ -221,7 +217,8 @@ Table_response <- Data_Res %>%
     ggplot(aes(x = "Outdated items", y = mean, color = condition))+
     geom_point(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    facet_wrap(~response, scales = "free")+
+    facet_wrap(~response)+
+    ylim(0,0.3)+
     labs(
       x = "", y = "Proportion of response", 
       title = "Outdated items")+
@@ -234,8 +231,6 @@ Table_response <- Data_Res %>%
       axis.text = element_text(size = 10.5),
       strip.text = element_text(size = 10.5))
 )
-
-scale_individual_facet_y_axes(Plot_Res_Outdated, ylims = list(c(0,0.3), c(0,0.3)))
 
 ```
 
