@@ -1,0 +1,486 @@
+---
+title: "data_analysis"
+author: "Chenyu Li"
+format: html
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Initial setting
+
+## 1.1 clear workspacce and set default color
+
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names=TRUE))
+options(digits = 3)
+
+options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+```
+
+## 1.2 Packages, theme setting and path
+
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse", "brms","ggpubr", "job","tidybayes","emmeans","bayestestR")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+# install the missing packages
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+
+# theme
+theme_set(theme_bw())
+dodge1 = position_dodge(.1)
+dodge2 = position_dodge(.2)
+dodge3 = position_dodge(.3)
+dodge4 = position_dodge(.4)
+
+# task name
+task <- "Exp2"
+model_other_path <- str_glue("./models/Model-{task}/Models_Others/")
+model_path <- str_glue("./models/Model-{task}/Models/")
+sample_path <- str_glue("./models/Model-{task}/Sample/")
+figure_path <- str_glue("./figures/figures-{task}/")
+log_path <- "./models/"
+bf_path = "./models/BayesFactor/"
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(model_path), showWarnings = FALSE)
+dir.create(file.path(sample_path), showWarnings = FALSE)
+dir.create(file.path(figure_path), showWarnings = FALSE)
+
+```
+
+
+# 2 Data processing
+
+## 2.1 Import data
+
+```{r}
+
+# Import Response data
+Raw_Res <- read_csv("./data/Data_Exp2_Res.csv")
+
+# Category and count response
+Data_Res <- Raw_Res %>% 
+  filter(screenID == "retrieval") %>% 
+  mutate(
+    participant = factor(participant)) %>% 
+  classifyRes(groupLevel = c("participant", "block", "trial"))
+
+# Import Survey data
+Data_Survey <- read_csv("./data/Data_Exp2_Survey.csv")
+
+```
+
+## 2.2 Data cleaning
+
+```{r}
+
+
+
+
+```
+
+## 2.3 Create a table for the number of options
+
+```{r}
+
+# Create a table for the number of options
+Table_nOptions <- data.frame(
+  updPos = c("yes","no")) %>% 
+  mutate(nCorrect = 1,
+         nTransOld = ifelse(updPos=="yes" , 3, 2),
+         nTransNew = case_when(
+           updPos=="yes" ~ 2,
+           updPos=="no" ~ 3),
+         nOutSame = ifelse(updPos=="yes", 1, 1e-4),
+         nOutOther = case_when(
+           updPos=="yes" ~ 2, 
+           updPos=="no" ~ 3),
+         nNPL = 6)
+
+# Re-frame the table
+Columns_nOptions <- Table_nOptions %>% 
+  pivot_longer(cols = starts_with("n"), names_to ="response", values_to = "nOpt") %>% 
+  mutate(response = substring(response, 2))
+
+# Save it for drawing the figure
+write_csv(Columns_nOptions, str_glue("./figures/figures-Data/Data_{task}_nOptions.csv"))
+```
+
+# 3 Ploting data
+
+## 3.1 Data and data transform
+
+```{r}
+
+Table_response <- Data_Res %>% 
+  mutate(miniblock = block) %>%
+  select(
+    participant, miniblock, ends_with("New"), 
+    ends_with("Old"), starts_with("Out"), NPL, NoRes) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"),NPL, NoRes), 
+    names_to = "response", values_to = "value") %>% 
+  summarySE(DV = value, within = c("miniblock"), between = c("response"), group = "participant") %>% 
+  mutate( 
+    # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
+  select(!c(ci,se,n))
+
+```
+
+
+## 3.2 Plot
+
+
+### 3.2.1 Correct
+```{r}
+(
+  Plot_Res_Correct <- Table_response %>% 
+    filter(str_detect(response,"Correct")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("CorrectOld","CorrectNew"), 
+        labels = c("Origianl items","New items"))
+    ) %>% 
+    ggplot(aes(x = miniblock, y = mean, color = response))+
+    geom_point(position = dodge2)+
+    geom_line(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    ylim(0,1)+
+    labs(
+      x = "Block", y = "Proportion of correct", 
+      title = "Correct",
+      color = "Item type")+
+    theme(
+      # legend.position = "None",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
+
+```
+
+
+### 3.2.2 Transpositions
+```{r}
+(
+  Plot_Res_Trans <- Table_response %>% 
+    filter(str_detect(response,"Trans")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("TransOld","TransNew"), 
+        labels = c("Origianl items","New items"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = condition))+
+    geom_point(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    ylim(0,0.3)+
+    labs(
+      x = "Item type", y = "Proportion of response", 
+      title = "Transpositions")+
+    theme(
+      legend.position = "None",
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
+
+```
+
+
+### 3.2.3 Outdated items
+```{r}
+(
+  Plot_Res_Outdated <- Table_response %>% 
+    filter(str_detect(response,"Out")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("OutSame","OutOther"), 
+        labels = c("Original position","Other positions"))
+    ) %>% 
+    ggplot(aes(x = "Outdated items", y = mean, color = condition))+
+    geom_point(position = dodge2)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    facet_wrap(~response)+
+    ylim(0,0.3)+
+    labs(
+      x = "", y = "Proportion of response", 
+      title = "Outdated items")+
+    theme(
+      legend.position = "None",
+      axis.text.x = element_blank(),
+      axis.title = element_blank(),
+      axis.ticks.x = element_blank(),
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5),
+      strip.text = element_text(size = 10.5))
+)
+
+```
+
+### 3.2.4 NPL
+```{r}
+(
+  Plot_Res_NPL <- Table_response %>% 
+    filter(str_detect(response,"NPL")) %>%
+    ggplot(aes(x = response, y = mean, color = condition))+
+    geom_point(position = dodge1)+
+    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge1, width = 0.1)+
+    ylim(0,0.3)+
+    labs(
+      x = "", y = "Proportion of response", 
+      title = "NPL")+
+    theme(
+      # legend.position = "None",
+      axis.text.x = element_blank(),
+      axis.title.x = element_blank(),
+      axis.ticks.x = element_blank(),
+      title = element_text(size = 11),
+      axis.text = element_text(size = 10.5))
+)
+
+
+```
+
+### 3.2.5 Combined
+```{r}
+
+Plot_Res_combined <- ggpubr::ggarrange(
+  Plot_Res_Correct, Plot_Res_Trans, Plot_Res_Outdated, Plot_Res_NPL,
+  ncol = 2, nrow = 2, common.legend = TRUE, legend = "right")
+
+
+```
+
+
+# 4 Memory Measurement Model
+
+## 4.1 Data and data transform
+
+```{r}
+
+mData_M3 <- Data_Res %>% 
+  tidy_M3(
+    responses = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPL"),
+    group = c("participant", "condition", "updPos"),
+    DV_name = "y",
+    nDV_name = "nRet",
+    DV_numerical = TRUE
+  ) %>% 
+  left_join(Table_nOptions, by = "updPos") %>% 
+  mutate(
+    iP = ifelse(updPos == "yes", 1, 0)
+  )
+
+```
+
+
+## 4.2 Function
+
+```{r}
+
+genM3Form <- function(a1 = "free", c1 = "free", a2 = "free", 
+                      c2 = "free", ra = "free", rc = "free") {
+  
+  if (a2=="same") a1 = "fix"
+  
+  if (ra=="fix") {
+    form_mu4 = nlf(mu4 ~ iP*(a1 + inv_logit(rc)*c1 + n) +log(nOutSame))
+    form_mu5 = nlf(mu5 ~ (a1 + n) + log(nOutOther))
+    form_ra = as.formula(NULL)
+  } else {
+    form_mu4 = nlf(mu4 ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + n) +log(nOutSame))
+    form_mu5 = nlf(mu5 ~ inv_logit(ra)*a1 + n + log(nOutOther))
+    form_ra = ra ~ 0 + condition + (0 + condition || participant)
+  }
+  
+  if (a1 == "fix"){
+    form_a1 = a1 ~ 1 + (1 || participant)
+  } else {
+    form_a1 = a1 ~ 0 + condition + (0 + condition || participant)
+  }
+  
+  if (a2=="fix") {
+    form_a2 = a2 ~ 1 + (1 || participant)
+  } else if (a2=="same") {
+    form_a2 = nlf(a2 ~ a1)
+  } else {
+    form_a2 = a2 ~ 0 + condition + (0 + condition || participant)
+  }
+  
+  final_form <- bf(
+    y | trials(nRet) ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + n + log(nCorrect),
+    nlf(mu2 ~ a1 + n + log(nTransOld)),
+    nlf(mu3 ~ a2 + n + log(nTransNew)),
+    form_mu4,
+    form_mu5,
+    nlf(mu6 ~ n + log(nNPL)),
+    form_a1,
+    c1 ~ 0 + condition + (0 + condition || participant),
+    form_a2,
+    c2 ~ 0 + condition + (0 + condition || participant),
+    form_ra,
+    rc ~ 0 + condition + (0 + condition || participant),
+    n ~ 1,
+    nl = TRUE)
+  
+  return (final_form)
+}
+
+
+genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc="free") {
+  
+  if (ra=="fix") {
+    prior_ra = NULL
+  } else {
+    prior_ra = prior(normal(0,1), class = "b", nlpar = "ra")
+  }
+  
+  if (a2 == "same") {
+    prior_a2 = NULL
+  } else {
+    prior_a2 = prior(normal(3,1), class = "b", nlpar = "a2", lb = 0)
+  }
+  
+  
+  final_prior <- c(
+    prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
+    prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
+    prior_a2, 
+    prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
+    prior_ra,
+    prior(normal(0,1), class = "b", nlpar = "rc"),
+    prior(constant(0), class = "b", nlpar = "n"))
+  
+  return (final_prior)
+}
+
+```
+
+
+## 4.3 Model comparison
+
+```{r}
+
+List_MC <- list(
+  ra = c("free", "fix"),
+  a2 = c("free","same")
+)
+
+# Initialize job log
+init_jobLog(model_path)
+
+seq_model_comparsion(
+  task = task,
+  pars = List_MC,
+  form_fun = genM3Form,
+  prior_fun = genM3Prior,
+  brmArgs = list(
+    data = mData_M3,
+    family = multinomial(refcat = NA),
+    chains = 4,
+    cores = 4,
+    iter = 5000,
+    warmup = 2000,
+    control = list(adapt_delta = 0.95),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0),
+  model_path = model_path,
+  sample_path = sample_path,
+  bf_path = bf_path,
+  maxCore = 4,
+  sample_check = TRUE
+)
+
+
+```
+
+
+## 4.4 Bayes factor
+```{r}
+
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_rafix_a2same.rds"))
+
+Hypothesis <- hypothesis(Model_M3_SS6, c(
+  rc_RU = "rc_conditionupdating = rc_conditionremoval",
+  c1_EU = "c1_conditionencoding = c1_conditionupdating",
+  c1_KR = "c1_conditionkeeping = c1_conditionremoval",
+  c2_EU = "c2_conditionencoding = c2_conditionupdating"
+))
+
+plot(Hypothesis)
+
+'
+Hypothesis Tests for class b:
+  Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
+1      rc_RU   -0.360     0.843  -2.0002    1.338    1.47874   0.59657     
+2      c1_EU    0.639     0.280   0.0923    1.194    0.36833   0.26918    *
+3      c1_KR    1.311     0.384   0.5802    2.093    0.00702   0.00697    *
+4      c2_EU    0.179     0.325  -0.4548    0.821    3.68727   0.78666     
+'
+
+
+```
+
+
+### 4.4.5 Posterior
+
+```{r}
+
+Table_condition <- data.frame(
+  condition = rep(c("cn","kr"),times = 2),
+  formCond = c("cn","kr",
+               "Intercept","Intercept")) %>% 
+  mutate(condition = factor(condition))
+
+
+# The best model
+# Model_M3_SS6 <- read_rds(str_glue("{model_path}Model_Exp1_M3_rafix_a2same.rds"))
+
+# The original model
+Model_M3_SS6 <- read_rds(str_glue("{model_path}Model_Exp1_M3_rafree_a2free.rds"))
+
+Post_M3 <- Model_M3_SS6 %>% 
+  extractPost("condition", par_name = "M3_par") %>% 
+  rename(formCond = condition) %>% 
+  right_join(Table_condition ,relationship = "many-to-many") %>% 
+  select(!formCond) %>%
+  filter(!is.na(post), M3_par!="n") %>% 
+  pivot_wider(names_from = M3_par, values_from = post) %>% 
+  filter(!is.na(condition)) %>% 
+  rowwise() %>% 
+  mutate(
+    a2 = ifelse("a2" %in% names(.), a2, a1),
+    ra = ifelse("ra" %in% names(.), inv_logit_scaled(ra), 1),
+    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 0)
+    ) %>% 
+  ungroup() %>% 
+  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc)
+
+# Save the posterior
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_initial.rds"))
+# write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_final.rds"))
+
+
+```
+
+
+
+
+
+

@@ -88,7 +88,27 @@ Data_survey %>% write_csv(
 
 ```
 
+# Experiment 2
 
+```{r}
+
+file_path = list.files("./raw_data/local data/", pattern = "*.json", full.names = TRUE)
+
+Raw_Exp2 <- read_json_files(file_path)
+
+Data_response <- Raw_Exp2 %>% 
+  filter(expPart == "experiment") %>% 
+  select(participant, blockID, trialID, screenID, character, stepID, position, initial_item, final_item, npl_items, response, acc, rt) %>% 
+  mutate(
+    updPos = ifelse(initial_item == final_item, "no","yes"),
+    response = as.character(response)) %>% 
+  rename(answer = response, block = blockID, trial = trialID, condition = character)
+
+Data_response %>% write_csv(
+  file = "./data/Data_Exp2_Res.csv"
+)
+
+```
 
 
 
