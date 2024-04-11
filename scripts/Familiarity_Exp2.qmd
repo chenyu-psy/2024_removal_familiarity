@@ -214,19 +214,17 @@ Table_response <- Data_Res %>%
         levels = c("OutSame","OutOther"), 
         labels = c("Original position","Other positions"))
     ) %>% 
-    ggplot(aes(x = "Outdated items", y = mean, color = condition))+
+    ggplot(aes(x = miniblock, y = mean, color = response))+
     geom_point(position = dodge2)+
+    geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    facet_wrap(~response)+
-    ylim(0,0.3)+
+    # ylim(0,0.3)+
     labs(
       x = "", y = "Proportion of response", 
       title = "Outdated items")+
     theme(
       legend.position = "None",
-      axis.text.x = element_blank(),
       axis.title = element_blank(),
-      axis.ticks.x = element_blank(),
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5),
       strip.text = element_text(size = 10.5))
@@ -239,8 +237,9 @@ Table_response <- Data_Res %>%
 (
   Plot_Res_NPL <- Table_response %>% 
     filter(str_detect(response,"NPL")) %>%
-    ggplot(aes(x = response, y = mean, color = condition))+
-    geom_point(position = dodge1)+
+    ggplot(aes(x = miniblock, y = mean, color = response))+
+    geom_point()+
+    geom_line()+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge1, width = 0.1)+
     ylim(0,0.3)+
     labs(
@@ -248,9 +247,6 @@ Table_response <- Data_Res %>%
       title = "NPL")+
     theme(
       # legend.position = "None",
-      axis.text.x = element_blank(),
-      axis.title.x = element_blank(),
-      axis.ticks.x = element_blank(),
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5))
 )

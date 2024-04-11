@@ -98,8 +98,8 @@ Data_survey %>% write_csv(
 # and returns a table involving information about where the data is stored locally.
 Table_jatos_files_ExpDemo <- get_JATOS_data(
   token = "jap_KRbJz0dIaT2CrZ1YScvBDcMpC0ty6Ik16fab4", # The token is valid until the 12th of May
-  studyId = 565, # the study ID of your group
-  batchId = 480, # Batch session ID, please remember to distinguish between the test session and the experiment session
+  studyId = 576, # the study ID of your group
+  batchId = 493, # Batch session ID, please remember to distinguish between the test session and the experiment session
   dataPath = str_glue("./raw_data/Data_Exp2/") # Please remember to create 
 )
 
