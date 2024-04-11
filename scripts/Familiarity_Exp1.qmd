@@ -399,10 +399,10 @@ seq_model_comparsion(
   brmArgs = list(
     data = mData_M3,
     family = multinomial(refcat = NA),
-    chains = 4,
-    cores = 4,
-    iter = 5000,
-    warmup = 2000,
+    chains = 16,
+    cores = 16,
+    iter = 10000,
+    warmup = 2500,
     control = list(adapt_delta = 0.95),
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
@@ -410,7 +410,7 @@ seq_model_comparsion(
   model_path = model_path,
   sample_path = sample_path,
   bf_path = bf_path,
-  maxCore = 4,
+  maxCore = 16,
   sample_check = TRUE
 )
 
