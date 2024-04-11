@@ -1,0 +1,13 @@
+updPos,response,nOpt
+yes,Correct,1
+yes,TransOld,3
+yes,TransNew,2
+yes,OutSame,1
+yes,OutOther,2
+yes,NPL,6
+no,Correct,1
+no,TransOld,2
+no,TransNew,3
+no,OutSame,1e-4
+no,OutOther,3
+no,NPL,6

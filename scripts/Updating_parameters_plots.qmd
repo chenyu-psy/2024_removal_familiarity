@@ -123,41 +123,7 @@ Plot_Exp1_rc <- Table_Exp1_M3_r %>%
 
 ```{r}
 
-Plot_Exp2_ra <- Table_Exp2_M3_r %>% 
-  filter(coef %in% c("ra")) %>% 
-  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
-  ggplot(aes(x = condition, y = post, fill = condition)) +
-  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
-  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  labs(
-    title = "Experiment 2",
-    tag = "C")+
-  facet_wrap(~ setsize)+
-  ylim(0,1)+
-  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
-  theme(
-    strip.text = element_text(size = 11),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title = element_blank())
 
-Plot_Exp2_rc <- Table_Exp2_M3_r %>% 
-  filter(coef %in% c("rc")) %>% 
-  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
-  ggplot(aes(x = condition, y = post, fill = condition)) +
-  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
-  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  labs(
-    title = "Experiment 2",
-    tag = "D")+
-  facet_wrap(~ setsize)+
-  ylim(0,1)+
-  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
-  theme(
-    strip.text = element_text(size = 11),
-    axis.text.y = element_blank(),
-    axis.ticks.y = element_blank(),
-    axis.title = element_blank())
 
 
 ```
