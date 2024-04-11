@@ -259,18 +259,26 @@ Model_Correct <- readRDS(str_glue("{model_other_path}Model_Exp1_Correct.rds"))
 
 job({
   Prior_Correct <- bayestestR::unupdate(Model_Correct)
-  pairwise_comparisons(Model_Correct, Prior_Correct, specs = c("~condition"))
+  pairwise_comparisons(Model_Correct, Prior_Correct, specs = c(
+    "~ condition",
+    "~ condition|itemType", 
+    "~ itemType|condition"))
 },import = "auto")
 
 '
-Parameter           |       BF
-------------------------------
-keeping - encoding  | 1.20e+03
-keeping - removal   | 1.58e+06 *
-keeping - updating  | 1.34e+09
-encoding - removal  |     7.48
-encoding - updating | 4.24e+04 *
-removal - updating  |    21.09
+Parameter |       BF
+--------------------
+cn - kr   | 1.76e+13
+
+Parameter        |       BF
+---------------------------
+cn - kr New      | 2.08e+10
+cn - kr Original | 1.63e+12
+
+Parameter         |       BF
+----------------------------
+New - Original cn |     1.14
+New - Original kr | 1.16e+04
 '
 
 
@@ -426,18 +434,25 @@ Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_a2free_rafree.rds"))
 
 Hypothesis <- hypothesis(Model_M3, c(
   a1_a2_cn = "a1_conditioncn = a2_conditioncn",
-  a1_a2_kr = "a1_conditionkr = a2_conditionkr"
+  a1_a2_kr = "a1_conditionkr = a2_conditionkr",
+  ra = "ra_conditioncn = ra_conditionkr",
+  rc = "rc_conditioncn = rc_conditionkr"
 ))
+
+Hypothesis$hypothesis %>% mutate(Evid.Ratio = 1/Evid.Ratio)
 
 plot(Hypothesis)
 
 '
-Hypothesis Tests for class b:
+Bayes factor is the column Evid.Ratio
+Value larger than 1: evidence supporting a difference. 
+Value smaller than 1: evidence supporting no difference.
+
   Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
-1      rc_RU   -0.360     0.843  -2.0002    1.338    1.47874   0.59657     
-2      c1_EU    0.639     0.280   0.0923    1.194    0.36833   0.26918    *
-3      c1_KR    1.311     0.384   0.5802    2.093    0.00702   0.00697    *
-4      c2_EU    0.179     0.325  -0.4548    0.821    3.68727   0.78666     
+1   a1_a2_cn  -0.7082    0.1497   -1.005  -0.4154   2.11e+04  4.74e-05    *
+2   a1_a2_kr  -0.0507    0.0758   -0.201   0.0983   6.81e-02  9.36e-01     
+3         ra   2.9905    1.0500    0.841   5.0115   2.83e+01  3.42e-02    *
+4         rc  -0.9985    0.5581   -2.159   0.0680   2.40e+00  2.94e-01     
 '
 
 
