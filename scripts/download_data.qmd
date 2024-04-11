@@ -90,11 +90,41 @@ Data_survey %>% write_csv(
 
 # Experiment 2
 
+## Download data from JATOS
+
 ```{r}
 
-file_path = list.files("./raw_data/local data/", pattern = "*.json", full.names = TRUE)
+# This function downloads data from JATOS
+# and returns a table involving information about where the data is stored locally.
+Table_jatos_files_ExpDemo <- get_JATOS_data(
+  token = "jap_KRbJz0dIaT2CrZ1YScvBDcMpC0ty6Ik16fab4", # The token is valid until the 12th of May
+  studyId = 565, # the study ID of your group
+  batchId = 480, # Batch session ID, please remember to distinguish between the test session and the experiment session
+  dataPath = str_glue("./raw_data/Data_Exp2/") # Please remember to create 
+)
 
-Raw_Exp2 <- read_json_files(file_path)
+# Save the table locally so that you can load the data whenever you want.
+Table_jatos_files_ExpDemo %>% write_csv(
+  file = "./raw_data/Data_path_Exp2.csv"
+)
+
+```
+
+## Read data from the local file
+
+```{r}
+
+# Load the table with the data file information.
+Table_jatos_files <- read_csv("./raw_data/Data_path_Exp2.csv")
+
+# Filter participants who did not complete the experiment
+Table_jatos_files_filtered <- Table_jatos_files %>% 
+  filter(studyState == "FINISHED")
+
+# Read participants' data
+Raw_Exp2 <- read_json_files(Table_jatos_files_filtered$file)
+
+unique(Raw_Exp2$participant)
 
 Data_response <- Raw_Exp2 %>% 
   filter(expPart == "experiment") %>% 
@@ -107,6 +137,16 @@ Data_response <- Raw_Exp2 %>%
 Data_response %>% write_csv(
   file = "./data/Data_Exp2_Res.csv"
 )
+
+Data_survey <- Raw_Exp2 %>% 
+  filter(screenID == "survey") %>% 
+  select(participant,response) %>% 
+  unnest_wider(response)
+
+Data_survey %>% write_csv(
+  file = "./data/Data_Exp2_Survey.csv"
+)
+
 
 ```
 

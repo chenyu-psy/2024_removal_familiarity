@@ -185,15 +185,17 @@ Table_response <- Data_Res %>%
         levels = c("TransOld","TransNew"), 
         labels = c("Origianl items","New items"))
     ) %>% 
-    ggplot(aes(x = response, y = mean, color = condition))+
+    ggplot(aes(x = miniblock, y = mean, color = response))+
     geom_point(position = dodge2)+
+    geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,0.3)+
+    ylim(0,1)+
     labs(
-      x = "Item type", y = "Proportion of response", 
-      title = "Transpositions")+
+      x = "Block", y = "Proportion of correct", 
+      title = "Correct",
+      color = "Item type")+
     theme(
-      legend.position = "None",
+      # legend.position = "None",
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5))
 )
