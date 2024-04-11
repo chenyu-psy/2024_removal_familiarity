@@ -215,7 +215,7 @@ mData_M3 <- Data_Res %>%
 genM3Form <- function(a1 = "free", c1 = "free", a2 = "free", 
                       c2 = "free", ra = "free", rc = "free") {
   
-  if (a2=="same") a1 = "fix"
+  if (a2=="same")
   
   if (ra=="fix") {
     form_mu4 = nlf(mu4 ~ iP*(a1 + inv_logit(rc)*c1 + n) +log(nOutSame))
@@ -296,8 +296,8 @@ genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc
 ```{r}
 
 List_MC <- list(
-  ra = c("free", "fix"),
-  a2 = c("free","same")
+  a2 = c("free","same"),
+  ra = c("free"),
 )
 
 # Initialize job log
