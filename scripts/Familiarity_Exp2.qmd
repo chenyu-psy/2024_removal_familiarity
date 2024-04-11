@@ -75,7 +75,11 @@ Data_Res <- Raw_Res %>%
   filter(screenID == "retrieval") %>% 
   mutate(
     participant = factor(participant)) %>% 
-  classifyRes(groupLevel = c("participant", "block", "trial"))
+  classifyRes(groupLevel = c("participant", "block", "trial")) %>% 
+  mutate(
+    order = dense_rank(interaction(block,trial,lex.order=T)),
+    .by = "participant"
+  )
 
 # Import Survey data
 Data_Survey <- read_csv("./data/Data_Exp2_Survey.csv")
@@ -125,7 +129,7 @@ write_csv(Columns_nOptions, str_glue("./figures/figures-Data/Data_{task}_nOption
 ```{r}
 
 Table_response <- Data_Res %>% 
-  mutate(miniblock = block) %>%
+  mutate(miniblock = (order-1)%/%5) %>%
   select(
     participant, miniblock, ends_with("New"), 
     ends_with("Old"), starts_with("Out"), NPL, NoRes) %>% 

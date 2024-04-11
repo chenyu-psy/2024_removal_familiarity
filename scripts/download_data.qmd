@@ -6,7 +6,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Clear workspacce and set default color
+# 1 Clear workspacce and set default color
 
 ```{r reset, include=FALSE}
 graphics.off()
@@ -14,7 +14,7 @@ rm(list=ls(all.names=TRUE))
 options(digits = 3)
 ```
 
-# Import functions and packages
+# 2 Import functions and packages
 
 ```{r}
 
@@ -26,9 +26,9 @@ source("https://raw.githubusercontent.com/chenyu-psy/R-functions/main/read-json-
 
 ```
 
-# Experiment 1
+# 3 Experiment 1
 
-## Download data from JATOS
+## 3.1 Download data from JATOS
 
 ```{r}
 
@@ -48,7 +48,7 @@ Table_jatos_files_ExpDemo %>% write_csv(
 
 ```
 
-## Read data from the local file
+## 3.2 Read data from the local file
 
 ```{r}
 
@@ -57,7 +57,7 @@ Table_jatos_files <- read_csv("./raw_data/Data_path_Exp1.csv")
 
 # Filter participants who did not complete the experiment
 Table_jatos_files_filtered <- Table_jatos_files %>% 
-  filter(studyState == "FINISHED" | resultID == 13672)
+  filter(studyState == "FINISHED" | resultID == 13672, size > 100)
 
 # Read participants' data
 Raw_Exp1 <- read_json_files(Table_jatos_files_filtered$file)
@@ -88,9 +88,9 @@ Data_survey %>% write_csv(
 
 ```
 
-# Experiment 2
+# 4 Experiment 2
 
-## Download data from JATOS
+## 4.1 Download data from JATOS
 
 ```{r}
 
@@ -110,7 +110,7 @@ Table_jatos_files_ExpDemo %>% write_csv(
 
 ```
 
-## Read data from the local file
+## 4.2 Read data from the local file
 
 ```{r}
 
