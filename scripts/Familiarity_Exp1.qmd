@@ -74,7 +74,8 @@ Raw_Res <- str_glue("./data/Data_{task}_Res.csv") %>% read_csv()
 Data_Res <- Raw_Res %>% 
   filter(screenID == "retrieval") %>% 
   mutate(
-    participant = factor(participant)) %>% 
+    participant = factor(participant),
+    condition = factor(condition)) %>% 
   classifyRes(groupLevel = c("participant", "block", "trial"))
 
 # Import Survey data
@@ -186,7 +187,97 @@ ggsave(
 ```
 
 
-# 4 Memory Measurement Model
+# Model fit
+
+## Response
+
+### Data and data arguments
+
+```{r}
+
+# Data -------------------------------------------------------------------------
+
+mData_Res <- Data_Res %>% 
+  pivot_longer(
+    cols = c(CorrectNew, CorrectOld, TransNew, TransOld, OutSame, OutOther, NPL),
+    names_to = "category",
+    values_to = "value"
+  ) %>%
+  summarize(
+    Resp = sum(value, na.rm = TRUE),
+    nResp = sum(!is.na(value)),
+    .by = c(participant, condition, category)
+  ) %>% 
+  mutate(
+    itemType = case_when(
+      str_detect(category, "Old") ~ "Original",
+      str_detect(category, "New") ~ "New",
+      str_detect(category, "Out") ~ "Outdated",
+      TRUE ~ "NPL"),
+    response = case_when(
+      str_detect(category, "Correct|Same") ~ "correct",
+      TRUE ~ "incorrect")
+    )
+
+contrasts(mData_Res$condition) = bayestestR::contr.equalprior(n = 2)
+
+# Arguments --------------------------------------------------------------------
+
+Args_response <- list(
+  formula = Resp | trials(nResp) ~ 1 + condition*itemType + (1 + condition*itemType || participant),
+  family = binomial(),
+  prior = c(prior(normal(0,1), class = "b"), 
+            prior(student_t(3, 0, 2), class = "sd", lb = 0)),
+  chains = 16,
+  iter = 10000,
+  warmup = 2500,
+  cores = 16,
+  control = list(adapt_delta = 0.95, max_treedepth = 15),
+  save_pars = save_pars(all = TRUE)
+)
+
+init_jobLog(log_path)
+
+```
+
+### Correct responses
+
+```{r}
+
+job({
+  smart_runBrms(
+    data = mData_Res %>% 
+      filter(response == "correct",itemType %in% c("Original","New")),
+    args = Args_response,
+    model_path = model_other_path,
+    log_path = log_path,
+    name = str_glue("Model_Exp1_Correct"),
+    maxCore = 16,
+  )}, import = "auto", title = str_glue("Model_Exp1_Correct"))
+
+Model_Correct <- readRDS(str_glue("{model_other_path}Model_Exp1_Correct.rds"))
+
+job({
+  Prior_Correct <- bayestestR::unupdate(Model_Correct)
+  pairwise_comparisons(Model_Correct, Prior_Correct, specs = c("~condition"))
+},import = "auto")
+
+'
+Parameter           |       BF
+------------------------------
+keeping - encoding  | 1.20e+03
+keeping - removal   | 1.58e+06 *
+keeping - updating  | 1.34e+09
+encoding - removal  |     7.48
+encoding - updating | 4.24e+04 *
+removal - updating  |    21.09
+'
+
+
+```
+
+
+## Memory Measurement Model
 
 ## 4.1 Data and data transform
 
@@ -215,15 +306,13 @@ mData_M3 <- Data_Res %>%
 genM3Form <- function(a1 = "free", c1 = "free", a2 = "free", 
                       c2 = "free", ra = "free", rc = "free") {
   
-  if (a2=="same")
-  
   if (ra=="fix") {
-    form_mu4 = nlf(mu4 ~ iP*(a1 + inv_logit(rc)*c1 + n) +log(nOutSame))
-    form_mu5 = nlf(mu5 ~ (a1 + n) + log(nOutOther))
+    form_mu4 = nlf(mu4 ~ iP*(a1 + inv_logit(rc)*c1 + b) +log(nOutSame))
+    form_mu5 = nlf(mu5 ~ (a1 + b) + log(nOutOther))
     form_ra = as.formula(NULL)
   } else {
-    form_mu4 = nlf(mu4 ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + n) +log(nOutSame))
-    form_mu5 = nlf(mu5 ~ inv_logit(ra)*a1 + n + log(nOutOther))
+    form_mu4 = nlf(mu4 ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) +log(nOutSame))
+    form_mu5 = nlf(mu5 ~ inv_logit(ra)*a1 + b + log(nOutOther))
     form_ra = ra ~ 0 + condition + (0 + condition || participant)
   }
   
@@ -242,19 +331,19 @@ genM3Form <- function(a1 = "free", c1 = "free", a2 = "free",
   }
   
   final_form <- bf(
-    y | trials(nRet) ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + n + log(nCorrect),
-    nlf(mu2 ~ a1 + n + log(nTransOld)),
-    nlf(mu3 ~ a2 + n + log(nTransNew)),
+    y | trials(nRet) ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b + log(nCorrect),
+    nlf(mu2 ~ a1 + b + log(nTransOld)),
+    nlf(mu3 ~ a2 + b + log(nTransNew)),
     form_mu4,
     form_mu5,
-    nlf(mu6 ~ n + log(nNPL)),
+    nlf(mu6 ~ b + log(nNPL)),
     form_a1,
     c1 ~ 0 + condition + (0 + condition || participant),
     form_a2,
     c2 ~ 0 + condition + (0 + condition || participant),
     form_ra,
     rc ~ 0 + condition + (0 + condition || participant),
-    n ~ 1,
+    b ~ 1,
     nl = TRUE)
   
   return (final_form)
@@ -283,7 +372,7 @@ genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc
     prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
     prior_ra,
     prior(normal(0,1), class = "b", nlpar = "rc"),
-    prior(constant(0), class = "b", nlpar = "n"))
+    prior(constant(0), class = "b", nlpar = "b"))
   
   return (final_prior)
 }
@@ -297,7 +386,7 @@ genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc
 
 List_MC <- list(
   a2 = c("free","same"),
-  ra = c("free"),
+  ra = c("free")
 )
 
 # Initialize job log
@@ -333,13 +422,11 @@ seq_model_comparsion(
 ## 4.4 Bayes factor
 ```{r}
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_rafix_a2same.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_a2free_rafree.rds"))
 
-Hypothesis <- hypothesis(Model_M3_SS6, c(
-  rc_RU = "rc_conditionupdating = rc_conditionremoval",
-  c1_EU = "c1_conditionencoding = c1_conditionupdating",
-  c1_KR = "c1_conditionkeeping = c1_conditionremoval",
-  c2_EU = "c2_conditionencoding = c2_conditionupdating"
+Hypothesis <- hypothesis(Model_M3, c(
+  a1_a2_cn = "a1_conditioncn = a2_conditioncn",
+  a1_a2_kr = "a1_conditionkr = a2_conditionkr"
 ))
 
 plot(Hypothesis)
@@ -363,37 +450,34 @@ Hypothesis Tests for class b:
 
 Table_condition <- data.frame(
   condition = rep(c("cn","kr"),times = 2),
-  formCond = c("cn","kr",
-               "Intercept","Intercept")) %>% 
+  formCond = c(
+    "cn","kr",
+    "Intercept","Intercept")) %>% 
   mutate(condition = factor(condition))
 
 
-# The best model
-# Model_M3_SS6 <- read_rds(str_glue("{model_path}Model_Exp1_M3_rafix_a2same.rds"))
+# Model fit
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_a2free_rafree.rds"))
 
-# The original model
-Model_M3_SS6 <- read_rds(str_glue("{model_path}Model_Exp1_M3_rafree_a2free.rds"))
-
-Post_M3 <- Model_M3_SS6 %>% 
+Post_M3 <- Model_M3 %>% 
   extractPost("condition", par_name = "M3_par") %>% 
   rename(formCond = condition) %>% 
   right_join(Table_condition ,relationship = "many-to-many") %>% 
   select(!formCond) %>%
-  filter(!is.na(post), M3_par!="n") %>% 
+  filter(!is.na(post), M3_par!="b") %>% 
   pivot_wider(names_from = M3_par, values_from = post) %>% 
   filter(!is.na(condition)) %>% 
   rowwise() %>% 
   mutate(
     a2 = ifelse("a2" %in% names(.), a2, a1),
     ra = ifelse("ra" %in% names(.), inv_logit_scaled(ra), 1),
-    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 0)
+    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 1)
     ) %>% 
   ungroup() %>% 
   select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc)
 
 # Save the posterior
 write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_initial.rds"))
-# write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_final.rds"))
 
 
 ```
