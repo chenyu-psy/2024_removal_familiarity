@@ -92,16 +92,30 @@ Table_Exp1_M3 <- Post_Exp1_M3_initial %>%
 
 Plot_Exp1_r <- Table_Exp1_M3 %>%
   filter(coef %in% c("ra","rc")) %>% 
+  mutate(coef = factor(
+    coef,
+    levels = c("ra","rc"),
+    labels = c("Item memory", "Binding memory")
+  )) %>% 
   ggplot(aes(x = condition, y = post, fill = condition)) +
   gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
   facet_wrap(~ coef)+
-  labs(
-    title = "Experiment 1", tag = "A")+
+  labs(fill = "Condition")+
   ylim(0,1)+
   theme(
-    strip.text = element_text(size = 11),
-    axis.title = element_blank())
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+ggsave(
+  plot = Plot_Exp1_r,
+  path = figure_path,
+  filename = "Plot_Exp1_M3_r.pdf",
+  width = 8, height = 4
+)
 
 ```
 
@@ -109,7 +123,7 @@ Plot_Exp1_r <- Table_Exp1_M3 %>%
 
 ```{r}
 
-Plot_Exp1_M3_par_a <- Table_Exp1_M3 %>%
+Plot_Exp1_M3_a <- Table_Exp1_M3 %>%
   filter(coef %in% c("a1", "a2")) %>% 
   mutate(coef = factor(
     coef,
@@ -119,7 +133,7 @@ Plot_Exp1_M3_par_a <- Table_Exp1_M3 %>%
   ggplot(aes(x = condition, y = post, fill = condition)) +
   gghalves::geom_half_violin(side = "l", nudge = 0.1) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  labs(title = "Item memory", tag = "A")+
+  labs(title = "Item memory", tag = "A", fill = "Condition")+
   ylim(0,5)+
   facet_grid( ~ coef)+
   theme(
@@ -129,10 +143,11 @@ Plot_Exp1_M3_par_a <- Table_Exp1_M3 %>%
     axis.title = element_blank(),
     axis.text = element_text(size = 11),
     strip.text = element_text(size = 10.5),
-    strip.text.y = element_blank())
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
 
 
-Plot_Exp1_M3_par_c <- Table_Exp1_M3 %>%
+Plot_Exp1_M3_c <- Table_Exp1_M3 %>%
   filter(coef %in% c("c1", "c2")) %>% 
   mutate(coef = factor(
     coef,
@@ -151,9 +166,17 @@ Plot_Exp1_M3_par_c <- Table_Exp1_M3 %>%
     axis.text = element_text(size = 11),
     strip.text = element_text(size = 10.5),
     axis.ticks.y = element_blank(),
-    axis.text.y = element_blank())
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
 
-Plot_Exp1_M3_ac <- ggarrange(Plot_Exp1_M3_par_a, Plot_Exp1_M3_par_c)
+Plot_Exp1_M3_ac <- ggarrange(Plot_Exp1_M3_a, Plot_Exp1_M3_c, common.legend = FALSE)
+
+ggsave(
+  plot = Plot_Exp1_M3_ac,
+  path = figure_path,
+  filename = "Plot_Exp1_M3_ac.pdf",
+  width = 10, height = 4
+)
 
 ```
 
