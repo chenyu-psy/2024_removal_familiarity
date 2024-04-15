@@ -90,7 +90,16 @@ Data_Survey <- read_csv("./data/Data_Exp2_Survey.csv")
 
 ```{r}
 
+excluding_list = Data_Survey %>% 
+  filter(str_detect(attention,"是"), korean_question != "从未") %>% 
+  pull(participant)
 
+Data_Res <- Data_Res %>% 
+  filter(
+    !participant %in% excluding_list
+    )
+
+str_glue("{length(excluding_list)} participants are excluded from the analysis.") %>% message()
 
 
 ```
@@ -160,11 +169,11 @@ Table_response <- Data_Res %>%
         levels = c("CorrectOld","CorrectNew"), 
         labels = c("Origianl items","New items"))
     ) %>% 
-    ggplot(aes(x = miniblock, y = mean, color = response))+
+    ggplot(aes(x = factor(miniblock+1), y = mean, group=response, color = response))+
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,1)+
+    ylim(0.15,0.8)+
     labs(
       x = "Block", y = "Proportion of correct", 
       title = "Correct",
@@ -193,7 +202,7 @@ Table_response <- Data_Res %>%
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,1)+
+    # ylim(0,1)+
     labs(
       x = "Block", y = "Proportion of correct", 
       title = "Correct",
@@ -227,7 +236,7 @@ Table_response <- Data_Res %>%
       x = "", y = "Proportion of response", 
       title = "Outdated items")+
     theme(
-      legend.position = "None",
+      # legend.position = "None",
       axis.title = element_blank(),
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5),

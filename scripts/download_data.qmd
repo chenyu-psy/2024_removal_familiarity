@@ -127,11 +127,12 @@ Raw_Exp2 <- read_json_files(Table_jatos_files_filtered$file)
 unique(Raw_Exp2$participant)
 
 Data_response <- Raw_Exp2 %>% 
-  filter(expPart == "experiment") %>% 
+  filter(expPart == "experiment",screenID!="debrief") %>% 
   select(participant, blockID, trialID, screenID, character, stepID, position, initial_item, final_item, npl_items, response, acc, rt) %>% 
   mutate(
     updPos = ifelse(initial_item == final_item, "no","yes"),
-    response = as.character(response)) %>% 
+    response = as.character(response),
+    npl_items = str_replace_all(npl_items,",",";")) %>% 
   rename(answer = response, block = blockID, trial = trialID, condition = character)
 
 Data_response %>% write_csv(
