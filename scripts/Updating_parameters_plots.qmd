@@ -61,7 +61,7 @@ dir.create(file.path(figure_path), showWarnings = FALSE)
 
 # Experiment 1
 Post_Exp1_M3_initial <- str_glue("{data_path}Post_Exp1_M3_initial.rds") %>% readRDS()
-# Post_Exp1_M3_final <- str_glue("{data_path}Post_Exp1_M3_final.rds") %>% readRDS()
+Post_Exp2_M3_initial <- str_glue("{data_path}Post_Exp2_M3_initial.rds") %>% readRDS()
 
 
 
@@ -185,204 +185,108 @@ ggsave(
 ## Data preparation
 ```{r}
 
-Table_Exp3_M3_b <- Post_Exp3_M3_final %>% 
-  select(.chain, .iteration, .draw, condition, setsize, bec, brc) %>% 
-  pivot_longer(cols = c(bec, brc), names_to = "coef", values_to = "post") %>% 
+Table_Exp2_M3 <- Post_Exp2_M3_initial %>% 
+  select(.chain, .iteration, .draw, t, a1, a2, c1, c2, ra, rc) %>% 
+  pivot_longer(cols = c(a1, a2, c1, c2, ra, rc), names_to = "coef", values_to = "post") %>% 
   filter(
    post > quantile(post, 0.005),
    post < quantile(post, 0.995),
-   .by = c(condition, coef, setsize)
-  ) %>% 
-  labelCondition()
+   .by = c(t, coef)
+  )
+
 
 ```
 
-## 3.1 slope
+## Removal parameters
+
 ```{r}
 
-Plot_M3_para_bec <- Table_Exp3_M3_b %>% 
-  filter(coef %in% c("bec")) %>% 
-  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
-  ggplot(aes(x = condition, y = post, fill = condition)) +
-  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+Plot_Exp2_r <- Table_Exp2_M3 %>%
+  filter(coef %in% c("ra","rc")) %>% 
+  mutate(coef = factor(
+    coef,
+    levels = c("ra","rc"),
+    labels = c("Item memory", "Binding memory")
+  )) %>% 
+  ggplot(aes(x = t, y = post, fill = t)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  scale_fill_manual(values = c("#FF7F6F","#FFBE7A"))+
-  labs(
-    x = "Condition", fill = "Condition", 
-    title = expression("Encoding rate "~(beta[ec])),
-    tag = "A")+
-  facet_wrap(~ setsize)+
-  theme(
-    legend.position = "none",
-    axis.text = element_text(size = 11),
-    axis.title = element_text(size = 11),
-    strip.text = element_text(size = 11),
-    axis.title.y = element_blank())
-
-Plot_M3_para_brc <- Table_Exp3_M3_b %>% 
-  filter(coef %in% c("brc")) %>% 
-  mutate(setsize = str_glue("Set-size {setsize}")) %>% 
-  ggplot(aes(x = condition, y = post, fill = condition)) +
-  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
-  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  labs(
-    x = "Condition", fill = "Condition", 
-    title = expression("Removal rate "~(beta[rc])),
-    tag = "B")+
-  facet_wrap(~ setsize)+
-  scale_fill_manual(values = c("#2F7FC1","#FFBE7A"))+
-  theme(
-    legend.position = "none",
-    axis.text = element_text(size = 11),
-    axis.title = element_text(size = 11),
-    strip.text = element_text(size = 11),
-    axis.title.y = element_blank())
-
-Plot_M3_para_b <- ggarrange(Plot_M3_para_bec, Plot_M3_para_brc, 
-                            ncol = 2, nrow = 1, legend = "none")
-
-
-```
-
-## 3.2 encoding time and remvoal time
-
-### 3.2.1 data
-
-```{r}
-
-Table_remvoal <- Post_Exp3_M3_final %>% 
-  select(.chain, .iteration, .draw, condition, setsize, brc, yrc) %>% 
-  pivot_longer(cols = c(brc, yrc), names_to = "coef", values_to = "post") %>% 
-  dplyr::filter(
-   post > quantile(post, 0.005),
-   post < quantile(post, 0.995),
-   .by = c(condition, coef, setsize)
-  ) %>% 
-  labelCondition() %>% 
-  summarise(
-    mean = mean(post),
-    .by = c(setsize, condition, coef)
-  ) %>% 
-  pivot_wider(names_from = coef, values_from = mean)
-
-
-Table_encoding <- Post_Exp3_M3_final %>% 
-  select(.chain, .iteration, .draw, condition, setsize, bec) %>% 
-  pivot_longer(cols = c(bec), names_to = "coef", values_to = "post") %>% 
-  dplyr::filter(
-   post > quantile(post, 0.005),
-   post < quantile(post, 0.995),
-   .by = c(condition, coef, setsize)
-  ) %>% 
-  labelCondition() %>% 
-  summarise(
-    mean = mean(post),
-    .by = c(setsize, condition, coef)
-  ) %>% 
-  pivot_wider(names_from = coef, values_from = mean)
-
-```
-
-### 3.2.2 functions
-
-```{r}
-
-enc_fun <- function(t, slope) {
-  y = 1 - exp(-slope * t)
-  return (y)
-}
-
-rem_fun <- function(t, slope, asy) {
-  y = asy + (1-asy)*exp(-slope * t)
-  return (y)
-}
-
-```
-
-
-
-```{r}
-
-Plot_encoding_curve <- ggplot() +
-  geom_function(
-    fun = enc_fun, 
-    args = list(slope = Table_encoding$bec[1]), 
-    mapping = aes(linetype = "Set-size 4",color = "Encoding"),linewidth = 1)+
-  geom_function(
-    fun = enc_fun, 
-    args = list(slope = Table_encoding$bec[3]), 
-    mapping = aes(linetype = "Set-size 5",color = "Encoding"),linewidth = 1)+
-  geom_function(
-    fun = enc_fun, 
-    args = list(slope = Table_encoding$bec[5]), 
-    mapping = aes(linetype = "Set-size 6",color = "Encoding"),linewidth = 1)+
-  geom_function(
-    fun = enc_fun, 
-    args = list(slope = Table_encoding$bec[2]), 
-    mapping = aes(linetype = "Set-size 4",color = "Updating"),linewidth = 1)+
-  geom_function(
-    fun = enc_fun, 
-    args = list(slope = Table_encoding$bec[4]), 
-    mapping = aes(linetype = "Set-size 5",color = "Updating"),linewidth = 1)+
-  geom_function(
-    fun = enc_fun, 
-    args = list(slope = Table_encoding$bec[5]), 
-    mapping = aes(linetype = "Set-size 6",color = "Updating"),linewidth = 1)+
-  scale_color_manual(values = c("Encoding" = "#FF7F6F", "Updating" = "#FFBE7A"))+
-  scale_linetype_manual(values = c("Set-size 4" = "solid", "Set-size 5" = "dashed", "Set-size 6" = "dotted"))+
-  labs(x = "Processing time (s)",
-       y = expression("Proportional binding strength" ~ (e[c])),
-       title = "Time course of encoding",
-       color = "Condition", linetype = "Set size",tag="C")+
-  theme(
-    legend.justification = c(1, 0),
-    legend.position = c(0.98, 0.02),
-    axis.text = element_text(size = 11),
-    axis.title = element_text(size = 11),
-    strip.text = element_text(size = 11))
-  
-Plot_removal_curve <- ggplot()+
-  geom_function(
-    fun = rem_fun, 
-    args = list(slope = Table_remvoal$brc[4], asy = Table_remvoal$yrc[4]),
-    mapping = aes(linetype = "Set-size 5",color = "Updating"),linewidth = 1)+
-  geom_function(
-    fun = rem_fun, 
-    args = list(slope = Table_remvoal$brc[6], asy = Table_remvoal$yrc[6]), 
-    mapping = aes(linetype = "Set-size 6",color = "Updating"),linewidth = 1)+
-  scale_color_manual(values = c("Updating" = "#FFBE7A"))+
-  scale_linetype_manual(values = c("Set-size 5" = "dashed", "Set-size 6" = "dotted"))+
+  facet_wrap(~ coef)+
+  labs(fill = "Condition")+
   ylim(0,1)+
-  labs(x = "Processing time (s)",
-       y = expression("Proportional binding strength" ~ (r[c])),
-       title = "Time course of removal",
-       tag = "D")+
   theme(
-    legend.position = "none",
     axis.text = element_text(size = 11),
-    axis.title = element_text(size = 11),
-    strip.text = element_text(size = 11))
-
-
-Plot_curve <- ggarrange(
-  Plot_encoding_curve, Plot_removal_curve, 
-  ncol = 2, nrow = 1)
-
-```
-
-3.3 Combine
-
-```{r}
-
-Plot_slope <- ggarrange(
-  Plot_M3_para_b,Plot_curve,nrow = 2)
+    strip.text = element_text(size = 10.5),
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
 
 ggsave(
-  filename = str_glue("Plot_M3_slope.pdf"),
-  plot = Plot_slope,
+  plot = Plot_Exp2_r,
   path = figure_path,
-  width = 10, height = 7
+  filename = "Plot_Exp1_M3_r.pdf",
+  width = 8, height = 4
 )
 
 ```
 
+## 2 Memory parameters
+
+```{r}
+
+Plot_Exp2_M3_a <- Table_Exp2_M3 %>%
+  filter(coef %in% c("a1", "a2")) %>% 
+  mutate(coef = factor(
+    coef,
+    levels = c("a1","a2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = t, y = post, fill = t)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Item memory", tag = "A", fill = "Condition")+
+  # ylim(0,5)+
+  facet_grid( ~ coef)+
+  theme(
+    legend.position = "inside",
+    legend.justification = c(1,1),
+    legend.position.inside = c(0.98,0.98),
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+
+Plot_Exp2_M3_c <- Table_Exp2_M3 %>%
+  filter(coef %in% c("c1", "c2")) %>% 
+  mutate(coef = factor(
+    coef,
+    levels = c("c1","c2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = t, y = post, fill = t)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Binding memory", tag = "B")+
+  # ylim(0,5)+
+  facet_grid( ~ coef)+
+  theme(
+    legend.position = "none",
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+Plot_Exp1_M3_ac <- ggarrange(Plot_Exp1_M3_a, Plot_Exp1_M3_c, common.legend = FALSE)
+
+ggsave(
+  plot = Plot_Exp1_M3_ac,
+  path = figure_path,
+  filename = "Plot_Exp1_M3_ac.pdf",
+  width = 10, height = 4
+)
+
+```

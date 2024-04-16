@@ -172,7 +172,7 @@ Table_response <- Data_Res %>%
       x = "Item type", y = "Proportion of correct", 
       color = "Condition")+
     theme(
-      legend.position = "None",
+      # legend.position = "None",
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5))
 )
@@ -181,7 +181,7 @@ ggsave(
   plot = Plot_Res_Correct,
   path = figure_path,
   filename = "Plot_Res_Correct.pdf",
-  width = 5, height = 5
+  width = 6.5, height = 5
 )
 
 ```
@@ -459,7 +459,7 @@ Value smaller than 1: evidence supporting no difference.
 ```
 
 
-### 4.4.5 Posterior
+## 4.5 Posterior
 
 ```{r}
 
