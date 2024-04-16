@@ -16,8 +16,8 @@ graphics.off()
 rm(list=ls(all.names=TRUE))
 options(digits = 3)
 
-options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
-options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.colour= c("#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.fill= c("#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
 ```
 
 ## 1.2 Packages, theme setting and path
