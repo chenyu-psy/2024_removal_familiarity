@@ -46,7 +46,6 @@ dodge4 = position_dodge(.4)
 
 # task name
 task <- "Exp1"
-model_other_path <- str_glue("./models/Model-{task}/Models_Others/")
 model_path <- str_glue("./models/Model-{task}/Models/")
 sample_path <- str_glue("./models/Model-{task}/Sample/")
 figure_path <- str_glue("./figures/figures-{task}/")
@@ -228,15 +227,13 @@ Args_response <- list(
   family = binomial(),
   prior = c(prior(normal(0,1), class = "b"), 
             prior(student_t(3, 0, 2), class = "sd", lb = 0)),
-  chains = 4,
+  chains = 8,
   iter = 10000,
   warmup = 2500,
-  cores = 4,
+  cores = 8,
   control = list(adapt_delta = 0.95, max_treedepth = 15),
   save_pars = save_pars(all = TRUE)
 )
-
-init_jobLog(log_path)
 
 ```
 
@@ -244,10 +241,16 @@ init_jobLog(log_path)
 
 ```{r}
 
+mData_Res_Correct <- mData_Res %>% 
+  filter(response == "correct",itemType %in% c("Original","New")) %>% 
+  mutate(itemType = factor(itemType))
+
+contrasts(mData_Res_Correct$itemType) = bayestestR::contr.equalprior(n = 2)
+
 smart_runFun(
   fun = brm,
   args = Args_response %>% append(list(
-      data = mData_Res %>% filter(response == "correct",itemType %in% c("Original","New")),
+      data = mData_Res_Correct,
       file = str_glue("{model_path}Model_Exp1_Correct.rds"))),
   untilFinished = FALSE,
   name = "Model_Exp1_Correct",
@@ -258,12 +261,12 @@ Model_Correct <- readRDS(str_glue("{model_path}Model_Exp1_Correct.rds"))
 smart_runFun(
   fun = unupdate,
   args = list(model = Model_Correct),
-  name = "Prior_Exp1_Correct",
-  export = "Prior_Exp1_Correct"
+  untilFinished = TRUE,
+  export = "Prior_Correct"
 )
 pairwise_comparisons(
   Model_Correct, 
-  Prior_Exp1_Correct, 
+  Prior_Correct, 
   c("~ condition","~ condition | itemType","~ itemType | condition"))
 
 
@@ -271,17 +274,17 @@ pairwise_comparisons(
 '
 Parameter |       BF
 --------------------
-cn - kr   | 1.76e+13
+cn - kr   | 4.00e+14
 
 Parameter        |       BF
 ---------------------------
-cn - kr New      | 2.08e+10
-cn - kr Original | 1.63e+12
+cn - kr New      | 1.02e+08
+cn - kr Original | 2.49e+18
 
 Parameter         |       BF
 ----------------------------
-New - Original cn |     1.14
-New - Original kr | 1.16e+04
+New - Original cn |    0.515
+New - Original kr | 2.74e+03
 '
 
 
@@ -314,78 +317,84 @@ mData_M3 <- Data_Res %>%
 
 ```{r}
 
-genM3Form <- function(a1 = "free", c1 = "free", a2 = "free", 
-                      c2 = "free", ra = "free", rc = "free") {
+genM3Form <- function(choice_rule="softmax") {
   
-  if (ra=="fix") {
-    form_mu4 = nlf(mu4 ~ iP*(a1 + inv_logit(rc)*c1 + b) +log(nOutSame))
-    form_mu5 = nlf(mu5 ~ (a1 + b) + log(nOutOther))
-    form_ra = as.formula(NULL)
+  if (choice_rule=="softmax") {
+    
+    M3_formula <- bf(
+      y | trials(nRet) ~ Correct + log(nCorrect),
+      nlf(mu2 ~ TransOld + log(nTransOld)),
+      nlf(mu3 ~ TransNew + log(nTransNew)),
+      nlf(mu4 ~ OutSame + log(nOutSame)),
+      nlf(mu5 ~ OutOther + log(nOutOther)),
+      nlf(mu6 ~ NPL + log(nNPL)),
+      nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
+      nlf(TransOld ~ a1 + b),
+      nlf(TransNew ~ a2 + b),
+      nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b)),
+      nlf(OutOther ~ inv_logit(ra)*a1 + b),
+      nlf(NPL ~ b),
+      a1 ~ 0 + condition + (0 + condition || participant),
+      c1 ~ 0 + condition + (0 + condition || participant),
+      a2 ~ 0 + condition + (0 + condition || participant),
+      c2 ~ 0 + condition + (0 + condition || participant),
+      ra ~ 0 + condition + (0 + condition || participant),
+      rc ~ 0 + condition + (0 + condition || participant),
+      b ~ 1,
+      nl = TRUE
+    )
   } else {
-    form_mu4 = nlf(mu4 ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) +log(nOutSame))
-    form_mu5 = nlf(mu5 ~ inv_logit(ra)*a1 + b + log(nOutOther))
-    form_ra = ra ~ 0 + condition + (0 + condition || participant)
+    
+    M3_formula <- bf(
+      y | trials(nRet) ~ log(Correct*nCorrect),
+      nlf(mu2 ~ log(TransOld*nTransOld)),
+      nlf(mu3 ~ log(TransNew*nTransNew)),
+      nlf(mu4 ~ log(OutSame*nOutSame)),
+      nlf(mu5 ~ log(OutOther*nOutOther)),
+      nlf(mu6 ~ log(NPL*nNPL)),
+      nlf(Correct ~ (1-iP)*(exp(a1) + exp(c1)) + iP*(exp(a2) + exp(c2)) + b),
+      nlf(TransOld ~ exp(a1) + b),
+      nlf(TransNew ~ exp(a2) + b),
+      nlf(OutSame ~ iP*(inv_logit(ra)*exp(a1) + inv_logit(rc)*exp(c1) + b) + exp(-100)),
+      nlf(OutOther ~ inv_logit(ra)*exp(a1) + b),
+      nlf(NPL ~ b),
+      a1 ~ 0 + condition + (0 + condition || participant),
+      c1 ~ 0 + condition + (0 + condition || participant),
+      a2 ~ 0 + condition + (0 + condition || participant),
+      c2 ~ 0 + condition + (0 + condition || participant),
+      ra ~ 0 + condition + (0 + condition || participant),
+      rc ~ 0 + condition + (0 + condition || participant),
+      b ~ 1,
+      nl = TRUE
+    )
   }
   
-  if (a1 == "fix"){
-    form_a1 = a1 ~ 1 + (1 || participant)
-  } else {
-    form_a1 = a1 ~ 0 + condition + (0 + condition || participant)
-  }
-  
-  if (a2=="fix") {
-    form_a2 = a2 ~ 1 + (1 || participant)
-  } else if (a2=="same") {
-    form_a2 = nlf(a2 ~ a1)
-  } else {
-    form_a2 = a2 ~ 0 + condition + (0 + condition || participant)
-  }
-  
-  final_form <- bf(
-    y | trials(nRet) ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b + log(nCorrect),
-    nlf(mu2 ~ a1 + b + log(nTransOld)),
-    nlf(mu3 ~ a2 + b + log(nTransNew)),
-    form_mu4,
-    form_mu5,
-    nlf(mu6 ~ b + log(nNPL)),
-    form_a1,
-    c1 ~ 0 + condition + (0 + condition || participant),
-    form_a2,
-    c2 ~ 0 + condition + (0 + condition || participant),
-    form_ra,
-    rc ~ 0 + condition + (0 + condition || participant),
-    b ~ 1,
-    nl = TRUE)
-  
-  return (final_form)
+  return (M3_formula)
 }
 
-
-genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc="free") {
+genM3Prior <- function(choice_rule="softmax") {
   
-  if (ra=="fix") {
-    prior_ra = NULL
+  if (choice_rule=="softmax") {
+    M3_prior <- c(
+      prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
+      prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
+      prior(normal(3,1), class = "b", nlpar = "a2", lb = 0),
+      prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
+      prior(normal(0,1), class = "b", nlpar = "ra"),
+      prior(normal(0,1), class = "b", nlpar = "rc"),
+      prior(constant(0), class = "b", nlpar = "b")
+      )
   } else {
-    prior_ra = prior(normal(0,1), class = "b", nlpar = "ra")
+    M3_prior <- c(
+      prior(normal(1.5,0.5), class = "b", nlpar = "a1"), 
+      prior(normal(1.5,0.5), class = "b", nlpar = "c1"),
+      prior(normal(1.5,0.5), class = "b", nlpar = "a2"),
+      prior(normal(1.5,0.5), class = "b", nlpar = "c2"),
+      prior(normal(1.5,0.5), class = "b", nlpar = "ra"),
+      prior(normal(1.5,0.5), class = "b", nlpar = "rc"),
+      prior(constant(0.1), class = "b", nlpar = "b")
+      )
   }
-  
-  if (a2 == "same") {
-    prior_a2 = NULL
-  } else {
-    prior_a2 = prior(normal(3,1), class = "b", nlpar = "a2", lb = 0)
-  }
-  
-  
-  final_prior <- c(
-    prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
-    prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
-    prior_a2, 
-    prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
-    prior_ra,
-    prior(normal(0,1), class = "b", nlpar = "rc"),
-    prior(constant(0), class = "b", nlpar = "b"))
-  
-  return (final_prior)
 }
 
 ```
@@ -395,37 +404,50 @@ genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc
 
 ```{r}
 
-List_MC <- list(
-  a2 = c("free","same"),
-  ra = c("free")
-)
+# softmax
 
-# Initialize job log
-init_jobLog(model_path)
-
-seq_model_comparsion(
-  task = task,
-  pars = List_MC,
-  form_fun = genM3Form,
-  prior_fun = genM3Prior,
-  brmArgs = list(
+smart_runFun(
+  fun = brm,
+  args = list(
+    formula = genM3Form(choice_rule = "softmax"),
     data = mData_M3,
     family = multinomial(refcat = NA),
-    chains = 16,
-    cores = 16,
+    prior = genM3Prior(choice_rule = "softmax"),
+    chains = 8,
+    cores = 8,
     iter = 10000,
     warmup = 2500,
     control = list(adapt_delta = 0.95),
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
-    init = 0),
-  model_path = model_path,
-  sample_path = sample_path,
-  bf_path = bf_path,
-  maxCore = 16,
-  sample_check = TRUE
+    init = 0,
+    file = paste0(model_path, "Model_Exp1_M3_Softmax")
+    ),
+  name = "Model_Exp1_M3_Softmax"
 )
 
+
+# luce choice rule
+
+smart_runFun(
+  fun = brm,
+  args = list(
+    formula = genM3Form(choice_rule = "luce"),
+    data = mData_M3,
+    family = multinomial(refcat = NA),
+    prior = genM3Prior(choice_rule = "luce"),
+    chains = 8,
+    cores = 8,
+    iter = 10000,
+    warmup = 2500,
+    control = list(adapt_delta = 0.95),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0.1,
+    file = paste0(model_path, "Model_Exp1_M3_Luce")
+    ),
+  name = "Model_Exp1_M3_Luce"
+)
 
 ```
 
@@ -433,13 +455,20 @@ seq_model_comparsion(
 ## 4.4 Bayes factor
 ```{r}
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_a2free_rafree.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax"))
 
 Hypothesis <- hypothesis(Model_M3, c(
-  a1_a2_cn = "a1_conditioncn = a2_conditioncn",
-  a1_a2_kr = "a1_conditionkr = a2_conditionkr",
+  a1 = "a1_conditioncn = a1_conditionkr",
+  c1 = "c1_conditioncn = c1_conditionkr",
+  a2 = "a2_conditioncn = a2_conditionkr",
+  c2 = "c2_conditioncn = c2_conditionkr",
+  
   ra = "ra_conditioncn = ra_conditionkr",
-  rc = "rc_conditioncn = rc_conditionkr"
+  rc = "rc_conditioncn = rc_conditionkr",
+  
+  a1_a2_cn = "a1_conditioncn = a2_conditioncn",
+  a1_a2_kr = "a1_conditionkr = a2_conditionkr"
+  
 ))
 
 Hypothesis$hypothesis %>% mutate(Evid.Ratio = 1/Evid.Ratio)
