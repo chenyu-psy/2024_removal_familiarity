@@ -96,7 +96,7 @@ Data_survey %>% write_csv(
 
 # This function downloads data from JATOS
 # and returns a table involving information about where the data is stored locally.
-Table_jatos_files_ExpDemo <- get_JATOS_data(
+Table_jatos_files_Exp2 <- get_JATOS_data(
   token = "jap_KRbJz0dIaT2CrZ1YScvBDcMpC0ty6Ik16fab4", # The token is valid until the 12th of May
   studyId = 576, # the study ID of your group
   batchId = 493, # Batch session ID, please remember to distinguish between the test session and the experiment session
@@ -104,7 +104,7 @@ Table_jatos_files_ExpDemo <- get_JATOS_data(
 )
 
 # Save the table locally so that you can load the data whenever you want.
-Table_jatos_files_ExpDemo %>% write_csv(
+Table_jatos_files_Exp2 %>% write_csv(
   file = "./raw_data/Data_path_Exp2.csv"
 )
 

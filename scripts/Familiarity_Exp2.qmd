@@ -25,7 +25,7 @@ options(ggplot2.discrete.fill= c("#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
 ```{r primary setting, include=FALSE}
 
 # package list
-packages = c("tidyverse", "brms","ggpubr", "job","tidybayes","emmeans","bayestestR")
+packages = c("tidyverse", "brms","ggpubr", "smartr","bmm","tidybayes","emmeans","bayestestR")
 # get the package names that are not installed
 missing_packages <- setdiff(packages, rownames(installed.packages()))
 # install the missing packages
@@ -173,7 +173,7 @@ Table_response <- Data_Res %>%
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0.25,0.8)+
+    ylim(0.3,0.75)+
     labs(
       x = "Block", y = "Proportion of correct", 
       title = "Correct",
@@ -202,7 +202,7 @@ Table_response <- Data_Res %>%
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,0.3)+
+    ylim(0,0.2)+
     labs(
       x = "Block", y = "Proportion of correct", 
       title = "Transposition",
@@ -231,7 +231,8 @@ Table_response <- Data_Res %>%
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0,0.3)+
+    ylim(0,0.2)+
+    scale_color_manual(values = c("#8FC0A9","#8A1C56"))+
     labs(
       x = "", y = "Proportion of response", 
       title = "Outdated items")+
@@ -384,96 +385,68 @@ genM3Prior <- function(a1="free", c1="free", a2="free", c2="free", ra="free", rc
 
 ```{r}
 
-luce_form <- bf(
-  y | trials(nRet) ~ log(Correct*nCorrect),
-  nlf(mu2 ~ log(TransOld*nTransOld)),
-  nlf(mu3 ~ log(TransNew*nTransNew)),
-  nlf(mu4 ~ log(OutSame*nOutSame)),
-  nlf(mu5 ~ log(OutOther*nOutOther)),
-  nlf(mu6 ~ log(NPL*nNPL)),
-  nlf(Correct ~ (1-iP)*(exp(a1) + exp(c1)) + iP*(exp(a2) + exp(c2)) + n),
-  nlf(TransOld ~ exp(a1) + n),
-  nlf(TransNew ~ exp(a2) + n),
-  nlf(OutSame ~ iP*(inv_logit(ra)*exp(a1) + inv_logit(rc)*exp(c1)) + n),
-  nlf(OutOther ~ inv_logit(ra)*exp(a1) + n),
-  nlf(NPL ~ n),
-  a1 ~ 0 + t + (0 + t || participant),
-  c1 ~ 0 + t + (0 + t || participant),
-  a2 ~ 0 + t + (0 + t || participant),
-  c2 ~ 0 + t + (0 + t || participant),
-  ra ~ 0 + t + (0 + t || participant),
-  rc ~ 0 + t + (0 + t || participant),
-  n ~ 1,
-  nl = TRUE
-)
-
-luce_prior <- c(
-  prior(normal(2,0.5), class = "b", nlpar = "a1"),
-  prior(normal(2,0.5), class = "b", nlpar = "c1"),
-  prior(normal(2,0.5), class = "b", nlpar = "a2"),
-  prior(normal(2,0.5), class = "b", nlpar = "c2"),
-  prior(normal(0,1), class = "b", nlpar = "ra"),
-  prior(normal(0,1), class = "b", nlpar = "rc"),
-  prior(constant(0.1), class = "b", nlpar = "n")
-)
-
-
-job({
-  smart_runBrms(
-    formula = luce_form,
-    data = mData_M3,
-    prior = luce_prior,
-    args = list(
-      family = multinomial(refcat = NA),
-      chains = 4,
-      cores = 4,
-      iter = 5000,
-      warmup = 2000,
-      control = list(adapt_delta = 0.95),
-      save_pars = save_pars(all = TRUE),
-      sample_prior = "yes",
-      init = 0.1
-    ),
-    model_path = model_path,
-    name = "Model_Exp2_M3_Luce"
-  )
-}, import = "auto", title = "Model_Exp2_M3_Luce")
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-final_form <- bf(
-    y | trials(nRet) ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + n + log(nCorrect),
-    nlf(mu2 ~ a1 + n + log(nTransOld)),
-    nlf(mu3 ~ a2 + n + log(nTransNew)),
-    nlf(mu4 ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + n) +log(nOutSame)),
-    nlf(mu5 ~ inv_logit(ra)*a1 + n + log(nOutOther)),
-    nlf(mu6 ~ n + log(nNPL)),
-    nlf(a1 ~ ya1 + ba1*t),
-    nlf(c1 ~ yc1 + bc1*t),
-    nlf(a2 ~ ya2 + ba2*t),
-    nlf(c2 ~ yc2 + bc2*t),
-    nlf(ra ~ sra - (1-sra)*(1-exp(-exp(bra)*t))),
-    nlf(rc ~ src - (1-src)*(1-exp(-exp(brc)*t))),
-    form_a1,
+M3_formula <- bmf(
+    Correct ~ (1-iP)*(a1+c1) + iP*(a2+c2) + b,
+    TransOld ~ a1 + b,
+    TransNew ~ a2 + b,
+    OutSame ~ iP*(ra*a1 + rc*c1) + b,
+    OutOther ~ ra*a1 + b,
+    NPL ~ b,
+    a1 ~ 0 + t + (0 + t || participant),
     c1 ~ 0 + t + (0 + t || participant),
-    form_a2,
+    a2 ~ 0 + t + (0 + t || participant),
     c2 ~ 0 + t + (0 + t || participant),
-    form_ra,
+    ra ~ 0 + t + (0 + t || participant),
     rc ~ 0 + t + (0 + t || participant),
-    n ~ 1,
-    nl = TRUE)
+    b ~ 1
+  )
+
+M3_model <- m3(
+  resp_cats = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPL"),
+  num_options = c("nCorrect", "nTransOld", "nTransNew", "nOutSame", "nOutOther", "nNPL"),
+  choice_rule = "luce",
+  version = "custom",
+  parameters = list(
+    a1 = "log",
+    c1 = "log",
+    a2 = "log",
+    c2 = "log",
+    ra = "logit",
+    rc = "logit",
+    b = 0.1))
+
+M3_prior <- c(
+    prior(normal(2,0.5), class = "b", nlpar = "a1"), 
+    prior(normal(2,0.5), class = "b", nlpar = "c1"),
+    prior(normal(2,0.5), class = "b", nlpar = "a2"),
+    prior(normal(2,0.5), class = "b", nlpar = "c2"),
+    prior(normal(0,1), class = "b", nlpar = "ra"),
+    prior(normal(0,1), class = "b", nlpar = "rc")
+    )
+
+
+smart_runFun(
+  fun = bmm,
+  args = list(
+    formula = M3_formula,
+    data = mData_M3,
+    model = M3_model,
+    iter = 5000,
+    warmup = 2000,
+    chains = 4,
+    cores = 4,
+    control = list(adapt_delta = 0.95),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0,
+    file = "./models/Model-Exp2/Models/Model_Exp2_M3_luce_free"
+  ),
+  untilFinished = FALSE,
+  core = 4,
+  maxCore = 4,
+  name = "Model_Exp2_M3_luce_free"
+)
+
 
 ```
 

@@ -25,7 +25,7 @@ options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A
 ```{r primary setting, include=FALSE}
 
 # package list
-packages = c("tidyverse", "brms","ggpubr", "job","tidybayes","emmeans","bayestestR")
+packages = c("tidyverse", "brms","ggpubr", "smartr","tidybayes","emmeans","bayestestR")
 # get the package names that are not installed
 missing_packages <- setdiff(packages, rownames(installed.packages()))
 # install the missing packages
@@ -228,10 +228,10 @@ Args_response <- list(
   family = binomial(),
   prior = c(prior(normal(0,1), class = "b"), 
             prior(student_t(3, 0, 2), class = "sd", lb = 0)),
-  chains = 16,
+  chains = 4,
   iter = 10000,
   warmup = 2500,
-  cores = 16,
+  cores = 4,
   control = list(adapt_delta = 0.95, max_treedepth = 15),
   save_pars = save_pars(all = TRUE)
 )
@@ -244,26 +244,29 @@ init_jobLog(log_path)
 
 ```{r}
 
-job({
-  smart_runBrms(
-    data = mData_Res %>% 
-      filter(response == "correct",itemType %in% c("Original","New")),
-    args = Args_response,
-    model_path = model_other_path,
-    log_path = log_path,
-    name = str_glue("Model_Exp1_Correct"),
-    maxCore = 16,
-  )}, import = "auto", title = str_glue("Model_Exp1_Correct"))
+smart_runFun(
+  fun = brm,
+  args = Args_response %>% append(list(
+      data = mData_Res %>% filter(response == "correct",itemType %in% c("Original","New")),
+      file = str_glue("{model_path}Model_Exp1_Correct.rds"))),
+  untilFinished = FALSE,
+  name = "Model_Exp1_Correct",
+)
 
-Model_Correct <- readRDS(str_glue("{model_other_path}Model_Exp1_Correct.rds"))
 
-job({
-  Prior_Correct <- bayestestR::unupdate(Model_Correct)
-  pairwise_comparisons(Model_Correct, Prior_Correct, specs = c(
-    "~ condition",
-    "~ condition|itemType", 
-    "~ itemType|condition"))
-},import = "auto")
+Model_Correct <- readRDS(str_glue("{model_path}Model_Exp1_Correct.rds"))
+smart_runFun(
+  fun = unupdate,
+  args = list(model = Model_Correct),
+  name = "Prior_Exp1_Correct",
+  export = "Prior_Exp1_Correct"
+)
+pairwise_comparisons(
+  Model_Correct, 
+  Prior_Exp1_Correct, 
+  c("~ condition","~ condition | itemType","~ itemType | condition"))
+
+
 
 '
 Parameter |       BF
