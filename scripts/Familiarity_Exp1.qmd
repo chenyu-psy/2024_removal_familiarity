@@ -307,8 +307,9 @@ mData_M3 <- Data_Res %>%
   ) %>% 
   left_join(Table_nOptions, by = "updPos") %>% 
   mutate(
-    iP = ifelse(updPos == "yes", 1, 0)
-  )
+    iP = ifelse(updPos == "yes", 1, 0),
+  ) %>% 
+  select(-updPos)
 
 ```
 

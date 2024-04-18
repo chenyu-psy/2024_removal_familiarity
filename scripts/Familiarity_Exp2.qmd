@@ -168,11 +168,11 @@ Table_response <- Data_Res %>%
         levels = c("CorrectOld","CorrectNew"), 
         labels = c("Origianl items","New items"))
     ) %>% 
-    ggplot(aes(x = factor(miniblock+1), y = mean, group=response, color = response))+
+    ggplot(aes(x = factor(miniblock), y = mean, group=response, color = response))+
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
     geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
-    ylim(0.3,0.75)+
+    # ylim(0.3,0.75)+
     labs(
       x = "Block", y = "Proportion of correct", 
       title = "Correct",
@@ -294,6 +294,7 @@ mData_M3 <- Data_Res %>%
   left_join(Table_nOptions, by = "updPos") %>% 
   mutate(
     condition = factor(block),
+    t = block - 1,
     iP = ifelse(updPos == "yes", 1, 0)
   )
 
@@ -308,28 +309,68 @@ genM3Form <- function(choice_rule="softmax", model = "linear") {
   
   if (choice_rule=="softmax") {
     
-    M3_formula <- bf(
-      y | trials(nRet) ~ Correct + log(nCorrect),
-      nlf(mu2 ~ TransOld + log(nTransOld)),
-      nlf(mu3 ~ TransNew + log(nTransNew)),
-      nlf(mu4 ~ OutSame + log(nOutSame)),
-      nlf(mu5 ~ OutOther + log(nOutOther)),
-      nlf(mu6 ~ NPL + log(nNPL)),
-      nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
-      nlf(TransOld ~ a1 + b),
-      nlf(TransNew ~ a2 + b),
-      nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b)),
-      nlf(OutOther ~ inv_logit(ra)*a1 + b),
-      nlf(NPL ~ b),
-      a1 ~ 0 + condition + (0 + condition || participant),
-      c1 ~ 0 + condition + (0 + condition || participant),
-      a2 ~ 0 + condition + (0 + condition || participant),
-      c2 ~ 0 + condition + (0 + condition || participant),
-      ra ~ 0 + condition + (0 + condition || participant),
-      rc ~ 0 + condition + (0 + condition || participant),
-      b ~ 1,
-      nl = TRUE
+    if (model == "linear") {
+      M3_formula <- bf(
+        y | trials(nRet) ~ Correct + log(nCorrect),
+        nlf(mu2 ~ TransOld + log(nTransOld)),
+        nlf(mu3 ~ TransNew + log(nTransNew)),
+        nlf(mu4 ~ OutSame + log(nOutSame)),
+        nlf(mu5 ~ OutOther + log(nOutOther)),
+        nlf(mu6 ~ NPL + log(nNPL)),
+        nlf(Correct ~ (1-iP)*(a + c1) + iP*(a + c2) + b),
+        nlf(TransOld ~ a + b),
+        nlf(TransNew ~ a + b),
+        nlf(OutSame ~ iP*(inv_logit(ra)*a + inv_logit(rc)*c1 + b)),
+        nlf(OutOther ~ inv_logit(ra)*a + b),
+        nlf(NPL ~ b),
+        a ~ 0 + condition + (0 + condition || participant),
+        c1 ~ 0 + condition + (0 + condition || participant),
+        c2 ~ 0 + condition + (0 + condition || participant),
+        ra ~ 0 + condition + (0 + condition || participant),
+        rc ~ 0 + condition + (0 + condition || participant),
+        b ~ 1,
+        nl = TRUE
+      )
+    } else {
+      
+      M3_formula <- bf(
+        y | trials(nRet) ~ Correct + log(nCorrect),
+        nlf(mu2 ~ TransOld + log(nTransOld)),
+        nlf(mu3 ~ TransNew + log(nTransNew)),
+        nlf(mu4 ~ OutSame + log(nOutSame)),
+        nlf(mu5 ~ OutOther + log(nOutOther)),
+        nlf(mu6 ~ NPL + log(nNPL)),
+        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
+        nlf(TransOld ~ a1 + b),
+        nlf(TransNew ~ a2 + b),
+        nlf(OutSame ~ iP*(ra*a1 + rc*c1 + b)),
+        nlf(OutOther ~ ra*a1 + b),
+        nlf(NPL ~ b),
+        nlf(a1 ~ ya1 + exp(ba1)*t),
+        nlf(a2 ~ ya2 + exp(ba2)*t),
+        nlf(c1 ~ yc1 + exp(bc1)*t),
+        nlf(c2 ~ yc2 + exp(bc2)*t),
+        nlf(ra ~ inv_logit(yra + bra*t)),
+        nlf(rc ~ inv_logit(yrc + brc*t)),
+        ya1 ~ 1 + (1 || participant),
+        ba1 ~ 1 + (1 || participant),
+        ya2 ~ 1 + (1 || participant),
+        ba2 ~ 1 + (1 || participant),
+        yc1 ~ 1 + (1 || participant),
+        bc1 ~ 1 + (1 || participant),
+        yc2 ~ 1 + (1 || participant),
+        bc2 ~ 1 + (1 || participant),
+        yra ~ 1 + (1 || participant),
+        bra ~ 1 + (1 || participant),
+        yrc ~ 1 + (1 || participant),
+        brc ~ 1 + (1 || participant),
+        b ~ 1,
+        nl = TRUE
     )
+      
+    }
+    
+    
   } else {
     
     M3_formula <- bf(
@@ -359,18 +400,36 @@ genM3Form <- function(choice_rule="softmax", model = "linear") {
   return (M3_formula)
 }
 
-genM3Prior <- function(choice_rule="softmax") {
+genM3Prior <- function(choice_rule="softmax", model = "linear") {
   
   if (choice_rule=="softmax") {
-    M3_prior <- c(
-      prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
-      prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
-      prior(normal(3,1), class = "b", nlpar = "a2", lb = 0),
-      prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
-      prior(normal(0,1), class = "b", nlpar = "ra"),
-      prior(normal(0,1), class = "b", nlpar = "rc"),
-      prior(constant(0), class = "b", nlpar = "b")
-      )
+    if (model == "linear") {
+      M3_prior <- c(
+        prior(normal(3,1), class = "b", nlpar = "a", lb = 0), 
+        prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
+        prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
+        prior(normal(0,1), class = "b", nlpar = "ra"),
+        prior(normal(0,1), class = "b", nlpar = "rc"),
+        prior(constant(0), class = "b", nlpar = "b")
+        )
+    } else {
+      M3_prior <- c(
+        prior(normal(3,1), class = "b", nlpar = "ya1"),
+        prior(normal(-1,0.5), class = "b", nlpar = "ba1"),
+        prior(normal(3,1), class = "b", nlpar = "ya2"),
+        prior(normal(-1,0.5), class = "b", nlpar = "ba2"),
+        prior(normal(3,1), class = "b", nlpar = "yc1"),
+        prior(normal(-1,0.5), class = "b", nlpar = "bc1"),
+        prior(normal(3,1), class = "b", nlpar = "yc2"),
+        prior(normal(-1,0.5), class = "b", nlpar = "bc2"),
+        prior(normal(0,1), class = "b", nlpar = "yra"),
+        prior(normal(0,1), class = "b", nlpar = "bra"),
+        prior(normal(0,1), class = "b", nlpar = "yrc"),
+        prior(normal(0,1), class = "b", nlpar = "brc"),
+        prior(constant(0), class = "b", nlpar = "b")
+        )
+    }
+    
   } else {
     M3_prior <- c(
       prior(normal(1.5,0.5), class = "b", nlpar = "a1"), 
@@ -382,6 +441,8 @@ genM3Prior <- function(choice_rule="softmax") {
       prior(constant(0.1), class = "b", nlpar = "b")
       )
   }
+  
+  return (M3_prior)
 }
 
 ```
@@ -404,13 +465,33 @@ smart_runFun(
     cores = 8,
     iter = 10000,
     warmup = 2500,
-    control = list(adapt_delta = 0.95),
+    control = list(adapt_delta = 0.98),
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp2_M3_Softmax")
+    file = paste0(model_path, "Model_Exp2_M3_Softmax_a")
     ),
-  name = "Model_Exp2_M3_Softmax"
+  name = "Model_Exp2_M3_Softmax_a"
+)
+
+smart_runFun(
+  fun = brm,
+  args = list(
+    formula = genM3Form(choice_rule = "softmax", model = "nonlinear"),
+    data = mData_M3,
+    family = multinomial(refcat = NA),
+    prior = genM3Prior(choice_rule = "softmax", model = "nonlinear"),
+    chains = 8,
+    cores = 8,
+    iter = 10000,
+    warmup = 2500,
+    control = list(adapt_delta = 0.98),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0,
+    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear")
+    ),
+  name = "Model_Exp2_M3_Softmax_nonlinear"
 )
 
 
