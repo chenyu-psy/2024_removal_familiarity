@@ -631,28 +631,24 @@ Hypothesis Tests for class b:
 ```
 
 
-### 4.4.5 Posterior
+## 4.5 Posterior
 
 ```{r}
 
 # The original model
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Luce.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Softmax_nonlinear_a.rds"))
 
 Post_M3 <- Model_M3 %>% 
-  extractPost("t", par_name = "M3_par") %>% 
-  filter(t!="Inercept") %>% 
-  pivot_wider(names_from = M3_par, values_from = post) %>% 
+  gather_draws(`b_.*`, regex = TRUE) %>% 
+  separate_wider_delim(.variable, "_", names = c(NA, "par", NA), cols_remove = TRUE) %>% 
+  pivot_wider(names_from = par, values_from = .value) %>% 
   rowwise() %>% 
   mutate(
-    a1 = exp(a1),
-    c1 = exp(c1),
-    a2 = ifelse("a2" %in% names(.), exp(a2), a1),
-    c2 = exp(c2),
-    ra = ifelse("ra" %in% names(.), inv_logit_scaled(ra), 1),
-    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 1)
+    ba = exp(ba),
+    bc1 = exp(bc1),
+    bc2 = exp(bc2)
     ) %>% 
-  ungroup() %>% 
-  select(.chain, .iteration, .draw, t, a1, a2, c1, c2, ra, rc)
+  ungroup()
 
 # Save the posterior
 write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_initial.rds"))

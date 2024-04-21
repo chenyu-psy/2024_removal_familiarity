@@ -185,108 +185,212 @@ ggsave(
 ## Data preparation
 ```{r}
 
-Table_Exp2_M3 <- Post_Exp2_M3_initial %>% 
-  select(.chain, .iteration, .draw, t, a1, a2, c1, c2, ra, rc) %>% 
-  pivot_longer(cols = c(a1, a2, c1, c2, ra, rc), names_to = "coef", values_to = "post") %>% 
+Post_Exp2_M3_pars <- Post_Exp2_M3_initial %>% 
+  pivot_longer(cols = !starts_with("."), names_to = "coef", values_to = "post") %>% 
   filter(
    post > quantile(post, 0.005),
    post < quantile(post, 0.995),
-   .by = c(t, coef)
+   .by = c(coef)
+  )
+
+Table_Exp2_M3_curve <- Post_Exp2_M3_initial %>% 
+  pivot_longer(cols = !starts_with("."), names_to = "coef", values_to = "post") %>% 
+  summarise(
+    mean = mean(post),
+    n = n(),
+    se = sd(post, na.rm = TRUE) / sqrt(n),
+    ci = qt(1 - (1 - 0.95) / 2, n - 1) * se,
+    .by = c("coef")
   )
 
 
 ```
 
-## Removal parameters
+## Plot parameters
+
+### Removal parameters
 
 ```{r}
 
-Plot_Exp2_r <- Table_Exp2_M3 %>%
-  filter(coef %in% c("ra","rc")) %>% 
-  mutate(coef = factor(
-    coef,
-    levels = c("ra","rc"),
-    labels = c("Item memory", "Binding memory")
-  )) %>% 
-  ggplot(aes(x = t, y = post, fill = t)) +
+Plot_Exp2_r_par <- Post_Exp2_M3_pars %>%
+  filter(coef %in% c("yra","yrc","bra","brc")) %>% 
+  mutate(
+    par = ifelse(str_detect(coef,"ra"),"Item memory","Binding memory"),
+    par = factor(par, levels = c("Item memory","Binding memory")),
+    parType = ifelse(str_detect(coef,"y"), "Intercept", "Slope"),
+  ) %>% 
+  ggplot(aes(x = par, y = post, fill = par)) +
   gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  facet_wrap(~ coef)+
-  labs(fill = "Condition")+
-  ylim(0,1)+
+  facet_wrap(~ parType)+
+  # ylim(0,1)+
   theme(
+    legend.position = "none",
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.title = element_blank())
+
+ggsave(
+  plot = Plot_Exp2_r_par,
+  path = figure_path,
+  filename = "Plot_Exp2_M3_par_r.pdf",
+  width = 8, height = 4
+)
+
+
+```
+
+
+### Memory parameters
+
+```{r}
+
+Plot_Exp2_ac_par <- Post_Exp2_M3_pars %>%
+  filter(coef %in% c("ya","yc1","yc2","ba","bc1","bc2")) %>% 
+  mutate(
+    par = case_when(
+      str_detect(coef,"a") ~ "Item memory",
+      str_detect(coef,"c1") ~ "Binding memory (Original items)",
+      str_detect(coef,"c2") ~ "Binding memory (New items)"),
+    par = factor(
+      par, 
+      levels = c("Item memory","Binding memory (Original items)", "Binding memory (New items)")),
+    parType = ifelse(str_detect(coef,"y"), "Intercept", "Slope"),
+  ) %>% 
+  ggplot(aes(x = "par", y = post, fill = par)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_grid(parType ~ par, scales = "free")+
+  theme(
+    legend.position = "none",
     axis.text = element_text(size = 11),
     strip.text = element_text(size = 10.5),
     axis.title = element_blank(),
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank())
+    axis.text.x = element_blank())
 
 ggsave(
-  plot = Plot_Exp2_r,
+  plot = Plot_Exp2_ac_par,
   path = figure_path,
-  filename = "Plot_Exp1_M3_r.pdf",
+  filename = "Plot_Exp2_M3_par_ac.pdf",
   width = 8, height = 4
+)
+
+
+```
+
+
+## Plot curve
+
+### function
+
+```{r}
+
+r_fun <- function(t, intercept, slope) {
+  
+  y <- brms::inv_logit_scaled(intercept + slope * t)
+  
+  return(y)
+}
+
+ac_fun <- function(t, intercept, slope) {
+  
+  y <- intercept + slope * t
+  
+  return(y)
+  
+}
+
+```
+
+
+### Removal parameters
+
+```{r}
+
+Plot_r <- ggplot2::ggplot()+
+  ggplot2::geom_function(
+    fun = r_fun, 
+    args = list(
+      intercept = filter(Table_Exp2_M3_curve,coef=="yra")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,coef=="bra")$mean[1]),
+    mapping = aes(linetype = "Parameter ra")
+    )+
+  ggplot2::geom_function(
+    fun = r_fun, 
+    args = list(
+      intercept = filter(Table_Exp2_M3_curve,coef=="yrc")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,coef=="brc")$mean[1]),
+    mapping = aes(linetype = "Parameter rc")
+    )+
+  xlim(0,4)+
+  ylim(0.4,0.8)+
+  labs(
+    x = "Block",
+    title = "Removal parameter"
+  )+
+  scale_linetype_manual(
+    values = c("Parameter ra" = "solid", "Parameter rc" = "dashed"))+
+  theme(
+    axis.title.y = ggplot2::element_blank(),
+    axis.text = ggplot2::element_text(size = 10.5),
+  )
+
+ggplot2::ggsave(
+  plot = Plot_r,
+  path = figure_path,
+  filename = "Plot_Exp2_curve_r.pdf",
+  width = 6, height = 4
 )
 
 ```
 
-## 2 Memory parameters
+### Memory parameters
 
 ```{r}
 
-Plot_Exp2_M3_a <- Table_Exp2_M3 %>%
-  filter(coef %in% c("a1", "a2")) %>% 
-  mutate(coef = factor(
-    coef,
-    levels = c("a1","a2"),
-    labels = c("Original items", "New items")
-  )) %>% 
-  ggplot(aes(x = t, y = post, fill = t)) +
-  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
-  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  labs(title = "Item memory", tag = "A", fill = "Condition")+
-  # ylim(0,5)+
-  facet_grid( ~ coef)+
+Plot_ac <- ggplot2::ggplot()+
+  ggplot2::geom_function(
+    fun = ac_fun, 
+    args = list(
+      intercept = filter(Table_Exp2_M3_curve,coef=="ya")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,coef=="ba")$mean[1]),
+    mapping = aes(linetype = "Item memory")
+    )+
+  ggplot2::geom_function(
+    fun = ac_fun, 
+    args = list(
+      intercept = filter(Table_Exp2_M3_curve,coef=="yc1")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,coef=="bc1")$mean[1]),
+    mapping = aes(linetype = "Binding memory (Original items)")
+    )+
+  ggplot2::geom_function(
+    fun = ac_fun, 
+    args = list(
+      intercept = filter(Table_Exp2_M3_curve,coef=="yc2")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,coef=="bc2")$mean[1]),
+    mapping = aes(linetype = "Binding memory (New items)")
+    )+
+  xlim(0,4)+
+  ylim(0,4)+
+  labs(
+    x = "Block",
+    title = "Memory parameter"
+  )+
+  scale_linetype_manual(
+    values = c(
+      "Item memory" = "solid", 
+      "Binding memory (Original items)" = "dashed", 
+      "Binding memory (New items)" = "dotted"))+
   theme(
-    legend.position = "inside",
-    legend.justification = c(1,1),
-    legend.position.inside = c(0.98,0.98),
-    axis.title = element_blank(),
-    axis.text = element_text(size = 11),
-    strip.text = element_text(size = 10.5),
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank())
+    axis.title.y = ggplot2::element_blank(),
+    axis.text = ggplot2::element_text(size = 10.5),
+  )
 
-
-Plot_Exp2_M3_c <- Table_Exp2_M3 %>%
-  filter(coef %in% c("c1", "c2")) %>% 
-  mutate(coef = factor(
-    coef,
-    levels = c("c1","c2"),
-    labels = c("Original items", "New items")
-  )) %>% 
-  ggplot(aes(x = t, y = post, fill = t)) +
-  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
-  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  labs(title = "Binding memory", tag = "B")+
-  # ylim(0,5)+
-  facet_grid( ~ coef)+
-  theme(
-    legend.position = "none",
-    axis.title = element_blank(),
-    axis.text = element_text(size = 11),
-    strip.text = element_text(size = 10.5),
-    axis.ticks.y = element_blank(),
-    axis.text.x = element_blank(),
-    axis.ticks.x = element_blank())
-
-Plot_Exp1_M3_ac <- ggarrange(Plot_Exp1_M3_a, Plot_Exp1_M3_c, common.legend = FALSE)
-
-ggsave(
-  plot = Plot_Exp1_M3_ac,
+ggplot2::ggsave(
+  plot = Plot_ac,
   path = figure_path,
-  filename = "Plot_Exp1_M3_ac.pdf",
-  width = 10, height = 4
+  filename = "Plot_Exp2_curve_ac.pdf",
+  width = 7, height = 4
 )
 
 ```
