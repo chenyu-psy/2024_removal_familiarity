@@ -61,7 +61,11 @@ dir.create(file.path(figure_path), showWarnings = FALSE)
 
 # Experiment 1
 Post_Exp1_M3_initial <- str_glue("{data_path}Post_Exp1_M3_initial.rds") %>% readRDS()
-Post_Exp2_M3_initial <- str_glue("{data_path}Post_Exp2_M3_initial.rds") %>% readRDS()
+Post_Exp1_M3_Int <- str_glue("{data_path}Post_Exp1_M3_Intercept.rds") %>% readRDS()
+
+# Experiment 2
+Post_Exp2_M3_linear <- str_glue("{data_path}Post_Exp2_M3_linear.rds") %>% readRDS()
+Post_Exp2_M3_condition <- str_glue("{data_path}Post_Exp2_M3_condition.rds") %>% readRDS()
 
 
 
@@ -83,6 +87,14 @@ Table_Exp1_M3 <- Post_Exp1_M3_initial %>%
   ) %>% 
   labelCondition()
 
+Table_Exp1_M3 <- Post_Exp1_M3_Int %>% 
+  filter(
+   post > quantile(post, 0.005, na.rm = TRUE),
+   post < quantile(post, 0.995, na.rm = TRUE),
+   .by = c(condition, par)
+  ) %>% 
+  labelCondition()
+
 
 ```
 
@@ -91,16 +103,16 @@ Table_Exp1_M3 <- Post_Exp1_M3_initial %>%
 ```{r}
 
 Plot_Exp1_r <- Table_Exp1_M3 %>%
-  filter(coef %in% c("ra","rc")) %>% 
-  mutate(coef = factor(
-    coef,
+  filter(par %in% c("ra","rc")) %>% 
+  mutate(par = factor(
+    par,
     levels = c("ra","rc"),
     labels = c("Item memory", "Binding memory")
   )) %>% 
   ggplot(aes(x = condition, y = post, fill = condition)) +
   gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  facet_wrap(~ coef)+
+  facet_wrap(~ par)+
   labs(fill = "Condition")+
   ylim(0,1)+
   theme(
@@ -124,6 +136,124 @@ ggsave(
 ```{r}
 
 Plot_Exp1_M3_a <- Table_Exp1_M3 %>%
+  filter(par %in% c("a1", "a2")) %>% 
+  mutate(par = factor(
+    par,
+    levels = c("a1","a2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Item memory", tag = "A", fill = "Condition")+
+  ylim(0,5)+
+  facet_grid( ~ par)+
+  theme(
+    legend.position = "inside",
+    legend.justification = c(1,1),
+    legend.position.inside = c(0.98,0.98),
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+
+Plot_Exp1_M3_c <- Table_Exp1_M3 %>%
+  filter(par %in% c("c1", "c2")) %>% 
+  mutate(par = factor(
+    par,
+    levels = c("c1","c2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Binding memory", tag = "B")+
+  ylim(0,5)+
+  facet_grid( ~ par)+
+  theme(
+    legend.position = "none",
+    axis.title = element_blank(),
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.ticks.y = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+Plot_Exp1_M3_ac <- ggarrange(Plot_Exp1_M3_a, Plot_Exp1_M3_c, common.legend = FALSE)
+
+ggsave(
+  plot = Plot_Exp1_M3_ac,
+  path = figure_path,
+  filename = "Plot_Exp1_M3_ac.pdf",
+  width = 10, height = 4
+)
+
+```
+
+# Experiment 2 (Condition)
+
+## Data preparation
+```{r}
+
+Table_Exp2_con_M3 <- Post_Exp2_M3_condition %>% 
+  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc) %>% 
+  pivot_longer(cols = c(a1, a2, c1, c2, ra, rc), names_to = "coef", values_to = "post") %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, coef)
+  ) %>% 
+  mutate(
+    condition = factor(
+      condition,
+      levels = c("familiar","unfamiliar"),
+      labels = c("familiar (last 10 trials)", "unfamiliar (first 10 trials)")
+    )
+  )
+
+
+```
+
+## Removal parameters
+
+```{r}
+
+Plot_Exp2_con_r <- Table_Exp2_con_M3 %>%
+  filter(coef %in% c("ra","rc")) %>% 
+  mutate(coef = factor(
+    coef,
+    levels = c("ra","rc"),
+    labels = c("Item memory", "Binding memory")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_wrap(~ coef)+
+  labs(fill = "Condition")+
+  ylim(0,1)+
+  theme(
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank())
+
+ggsave(
+  plot = Plot_Exp2_con_r,
+  path = figure_path,
+  filename = "Plot_Exp2_Con_M3_r.pdf",
+  width = 8, height = 4
+)
+
+```
+
+## 2 Memory parameters
+
+```{r}
+
+Plot_Exp2_con_a <- Table_Exp2_con_M3 %>%
   filter(coef %in% c("a1", "a2")) %>% 
   mutate(coef = factor(
     coef,
@@ -147,7 +277,7 @@ Plot_Exp1_M3_a <- Table_Exp1_M3 %>%
     axis.ticks.x = element_blank())
 
 
-Plot_Exp1_M3_c <- Table_Exp1_M3 %>%
+Plot_Exp2_con_c <- Table_Exp2_con_M3 %>%
   filter(coef %in% c("c1", "c2")) %>% 
   mutate(coef = factor(
     coef,
@@ -169,23 +299,24 @@ Plot_Exp1_M3_c <- Table_Exp1_M3 %>%
     axis.text.x = element_blank(),
     axis.ticks.x = element_blank())
 
-Plot_Exp1_M3_ac <- ggarrange(Plot_Exp1_M3_a, Plot_Exp1_M3_c, common.legend = FALSE)
+Plot_Exp2_con_ac <- ggarrange(Plot_Exp2_con_a, Plot_Exp2_con_c, common.legend = FALSE)
 
 ggsave(
-  plot = Plot_Exp1_M3_ac,
+  plot = Plot_Exp2_con_ac,
   path = figure_path,
-  filename = "Plot_Exp1_M3_ac.pdf",
+  filename = "Plot_Exp2_Con_M3_ac.pdf",
   width = 10, height = 4
 )
 
 ```
 
-# Experiment 2
+
+# Experiment 2 (linear)
 
 ## Data preparation
 ```{r}
 
-Post_Exp2_M3_pars <- Post_Exp2_M3_initial %>% 
+Post_Exp2_M3_pars <- Post_Exp2_M3_linear %>% 
   pivot_longer(cols = !starts_with("."), names_to = "coef", values_to = "post") %>% 
   filter(
    post > quantile(post, 0.005),
@@ -193,7 +324,7 @@ Post_Exp2_M3_pars <- Post_Exp2_M3_initial %>%
    .by = c(coef)
   )
 
-Table_Exp2_M3_curve <- Post_Exp2_M3_initial %>% 
+Table_Exp2_M3_curve <- Post_Exp2_M3_linear %>% 
   pivot_longer(cols = !starts_with("."), names_to = "coef", values_to = "post") %>% 
   summarise(
     mean = mean(post),

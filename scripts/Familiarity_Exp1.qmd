@@ -332,7 +332,7 @@ genM3Form <- function(choice_rule="softmax") {
       nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
       nlf(TransOld ~ a1 + b),
       nlf(TransNew ~ a2 + b),
-      nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b)),
+      nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) + (1-iP)*(-100)),
       nlf(OutOther ~ inv_logit(ra)*a1 + b),
       nlf(NPL ~ b),
       a1 ~ 0 + condition + (0 + condition || participant),
@@ -377,10 +377,10 @@ genM3Prior <- function(choice_rule="softmax") {
   
   if (choice_rule=="softmax") {
     M3_prior <- c(
-      prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
-      prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
-      prior(normal(3,1), class = "b", nlpar = "a2", lb = 0),
-      prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
+      prior(normal(3,1), class = "b", nlpar = "a1"),
+      prior(normal(3,1), class = "b", nlpar = "c1"),
+      prior(normal(3,1), class = "b", nlpar = "a2"),
+      prior(normal(3,1), class = "b", nlpar = "c2"),
       prior(normal(0,1), class = "b", nlpar = "ra"),
       prior(normal(0,1), class = "b", nlpar = "rc"),
       prior(constant(0), class = "b", nlpar = "b")
@@ -396,6 +396,8 @@ genM3Prior <- function(choice_rule="softmax") {
       prior(constant(0.1), class = "b", nlpar = "b")
       )
   }
+  
+  return(M3_prior)
 }
 
 ```
@@ -422,9 +424,9 @@ smart_runFun(
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp1_M3_Softmax")
+    file = paste0(model_path, "Model_Exp1_M3_Softmax_Int")
     ),
-  name = "Model_Exp1_M3_Softmax"
+  name = "Model_Exp1_M3_Softmax_Int"
 )
 
 
@@ -456,19 +458,16 @@ smart_runFun(
 ## 4.4 Bayes factor
 ```{r}
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax_noInt.rds"))
 
 Hypothesis <- hypothesis(Model_M3, c(
-  a1 = "a1_conditioncn = a1_conditionkr",
-  c1 = "c1_conditioncn = c1_conditionkr",
-  a2 = "a2_conditioncn = a2_conditionkr",
-  c2 = "c2_conditioncn = c2_conditionkr",
+  a1 = "a1_conditionkr = a1_conditioncn",
+  c1 = "c1_conditionkr = c1_conditioncn",
+  a2 = "a2_conditionkr = a2_conditioncn",
+  c2 = "c2_conditionkr = c2_conditioncn",
   
-  ra = "ra_conditioncn = ra_conditionkr",
-  rc = "rc_conditioncn = rc_conditionkr",
-  
-  a1_a2_cn = "a1_conditioncn = a2_conditioncn",
-  a1_a2_kr = "a1_conditionkr = a2_conditionkr"
+  ra = "ra_conditionkr = ra_conditioncn",
+  rc = "rc_conditionkr = rc_conditioncn"
   
 ))
 
@@ -508,24 +507,24 @@ Table_condition <- data.frame(
 Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_a2free_rafree.rds"))
 
 Post_M3 <- Model_M3 %>% 
-  extractPost("condition", par_name = "M3_par") %>% 
-  rename(formCond = condition) %>% 
-  right_join(Table_condition ,relationship = "many-to-many") %>% 
-  select(!formCond) %>%
-  filter(!is.na(post), M3_par!="b") %>% 
-  pivot_wider(names_from = M3_par, values_from = post) %>% 
-  filter(!is.na(condition)) %>% 
-  rowwise() %>% 
+  gather_draws(`b_.*`, regex = TRUE) %>% 
+  separate_wider_delim(.variable, "_", names = c(NA, "par","effect"), cols_remove = TRUE) %>% 
+  pivot_wider(names_from = "effect",values_from = .value) %>% 
   mutate(
-    a2 = ifelse("a2" %in% names(.), a2, a1),
-    ra = ifelse("ra" %in% names(.), inv_logit_scaled(ra), 1),
-    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 1)
-    ) %>% 
-  ungroup() %>% 
-  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc)
+    cn = Intercept,
+    kr = Intercept + conditionkr
+  ) %>% 
+  select(-c(Intercept, conditionkr)) %>% 
+  pivot_longer(cols = c("cn","kr"), names_to = "condition",values_to = "post") %>% 
+  mutate(post = case_when(
+    par=="ra" ~ inv_logit_scaled(post),
+    par=="rc" ~ inv_logit_scaled(post),
+    TRUE ~ post
+  ))
+
 
 # Save the posterior
-write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_initial.rds"))
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_Intercept.rds"))
 
 
 ```
