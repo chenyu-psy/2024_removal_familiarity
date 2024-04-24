@@ -60,8 +60,7 @@ dir.create(file.path(figure_path), showWarnings = FALSE)
 ```{r}
 
 # Experiment 1
-Post_Exp1_M3_initial <- str_glue("{data_path}Post_Exp1_M3_initial.rds") %>% readRDS()
-Post_Exp1_M3_Int <- str_glue("{data_path}Post_Exp1_M3_Intercept.rds") %>% readRDS()
+Post_Exp1_M3 <- str_glue("{data_path}Post_Exp1_M3.rds") %>% readRDS()
 
 # Experiment 2
 Post_Exp2_M3_linear <- str_glue("{data_path}Post_Exp2_M3_linear.rds") %>% readRDS()
@@ -77,20 +76,10 @@ Post_Exp2_M3_condition <- str_glue("{data_path}Post_Exp2_M3_condition.rds") %>% 
 ## Data preparation
 ```{r}
 
-Table_Exp1_M3 <- Post_Exp1_M3_initial %>% 
-  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc) %>% 
-  pivot_longer(cols = c(a1, a2, c1, c2, ra, rc), names_to = "coef", values_to = "post") %>% 
+Table_Exp1_M3 <- Post_Exp1_M3 %>% 
   filter(
    post > quantile(post, 0.005),
    post < quantile(post, 0.995),
-   .by = c(condition, coef)
-  ) %>% 
-  labelCondition()
-
-Table_Exp1_M3 <- Post_Exp1_M3_Int %>% 
-  filter(
-   post > quantile(post, 0.005, na.rm = TRUE),
-   post < quantile(post, 0.995, na.rm = TRUE),
    .by = c(condition, par)
   ) %>% 
   labelCondition()

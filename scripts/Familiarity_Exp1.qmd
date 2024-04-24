@@ -381,8 +381,8 @@ genM3Prior <- function(choice_rule="softmax") {
       prior(normal(3,1), class = "b", nlpar = "c1"),
       prior(normal(3,1), class = "b", nlpar = "a2"),
       prior(normal(3,1), class = "b", nlpar = "c2"),
-      prior(normal(0,1), class = "b", nlpar = "ra"),
-      prior(normal(0,1), class = "b", nlpar = "rc"),
+      prior(logistic(0,1), class = "b", nlpar = "ra"),
+      prior(logistic(0,1), class = "b", nlpar = "rc"),
       prior(constant(0), class = "b", nlpar = "b")
       )
   } else {
@@ -424,9 +424,9 @@ smart_runFun(
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp1_M3_Softmax_Int")
+    file = paste0(model_path, "Model_Exp1_M3_Softmax")
     ),
-  name = "Model_Exp1_M3_Softmax_Int"
+  name = "Model_Exp1_M3_Softmax"
 )
 
 
@@ -458,7 +458,7 @@ smart_runFun(
 ## 4.4 Bayes factor
 ```{r}
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax_noInt.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax.rds"))
 
 Hypothesis <- hypothesis(Model_M3, c(
   a1 = "a1_conditionkr = a1_conditioncn",
@@ -481,10 +481,12 @@ Value larger than 1: evidence supporting a difference.
 Value smaller than 1: evidence supporting no difference.
 
   Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
-1   a1_a2_cn  -0.7082    0.1497   -1.005  -0.4154   2.11e+04  4.74e-05    *
-2   a1_a2_kr  -0.0507    0.0758   -0.201   0.0983   6.81e-02  9.36e-01     
-3         ra   2.9905    1.0500    0.841   5.0115   2.83e+01  3.42e-02    *
-4         rc  -0.9985    0.5581   -2.159   0.0680   2.40e+00  2.94e-01     
+1         a1   -0.772     0.151   -1.073   -0.478   1.93e+06  5.17e-07    *
+2         c1   -2.826     0.286   -3.390   -2.264  -7.07e+95 -1.42e-96    *
+3         a2   -1.474     0.165   -1.804   -1.155  -3.22e+79 -3.11e-80    *
+4         c2   -1.113     0.205   -1.515   -0.715  -1.59e+19 -6.29e-20    *
+5         ra   -5.422     1.892   -9.686   -2.275   1.40e+02  7.08e-03    *
+6         rc    1.522     0.826    0.231    3.492   4.05e+00  1.98e-01    *
 '
 
 
@@ -504,18 +506,17 @@ Table_condition <- data.frame(
 
 
 # Model fit
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_a2free_rafree.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax.rds"))
 
 Post_M3 <- Model_M3 %>% 
   gather_draws(`b_.*`, regex = TRUE) %>% 
   separate_wider_delim(.variable, "_", names = c(NA, "par","effect"), cols_remove = TRUE) %>% 
-  pivot_wider(names_from = "effect",values_from = .value) %>% 
+  rename(
+    condition = effect,
+    post = .value) %>% 
   mutate(
-    cn = Intercept,
-    kr = Intercept + conditionkr
+    condition = str_remove(condition,"condition")
   ) %>% 
-  select(-c(Intercept, conditionkr)) %>% 
-  pivot_longer(cols = c("cn","kr"), names_to = "condition",values_to = "post") %>% 
   mutate(post = case_when(
     par=="ra" ~ inv_logit_scaled(post),
     par=="rc" ~ inv_logit_scaled(post),
@@ -524,13 +525,237 @@ Post_M3 <- Model_M3 %>%
 
 
 # Save the posterior
-write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_Intercept.rds"))
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3.rds"))
 
 
 ```
 
+## 4.6 Predicted results
+
+### 4.6.1 Data
+
+```{r}
+
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp1_M3_Softmax.rds"))
+
+Table_Res_f <- mData_M3 %>% 
+  mutate(
+    y = as.data.frame(y/nRet),
+    itemType = ifelse(iP==0,"original","new")) %>%
+  unnest_wider(y,names_sep = "") %>% 
+  mutate(
+    y1ori = ifelse(iP==0,y1,NA),
+    y1new = ifelse(iP==1,y1,NA),
+    y4 = ifelse(iP==1, y4, NA),
+  ) %>% 
+  select(-c(y1,iP)) %>% 
+  select(participant, condition, starts_with("y")) %>% 
+  pivot_longer(cols = starts_with("y"),names_to = "response",values_to = "value")
+
+Pred_M3 <- Model_M3 %>% 
+  epred_draws(
+    newdata = Model_M3$data,
+    ndraws = 1000
+  ) %>% 
+  ungroup() %>% 
+  mutate(.epred = .epred/nRet) %>% 
+  select(participant, condition, iP, .draw, .category, .epred) %>% 
+  pivot_wider(names_from = .category, values_from = ".epred",names_prefix = "y") %>% 
+  mutate(
+    y1ori = ifelse(iP==0,y1,NA),
+    y1new = ifelse(iP==1,y1,NA),
+    y4 = ifelse(iP==1, y4, NA),
+  ) %>% 
+  select(-c(y1,iP)) %>% 
+  pivot_longer(cols = starts_with("y"),names_to = "response", values_to = ".epred") %>% 
+  summarise(.epred = mean(.epred, na.rm = T),
+            .by = c(.draw, condition, response)) %>% 
+  filter(
+    .epred > quantile(.epred, 0.005, na.rm = T),
+    .epred < quantile(.epred, 0.995, na.rm = T),
+    .by = c(condition, response)
+  )
+
+```
+
+### 4.6.2 Correct
+
+```{r}
+
+Table_Res_f_correct <- Table_Res_f %>% 
+  filter(str_detect(response,"y1")) %>% 
+  mutate(itemType = ifelse(response=="y1ori","original","new")) %>% 
+  labelCondition()
+
+
+Table_Pred_correct <- Pred_M3 %>% 
+  filter(str_detect(response,"y1")) %>% 
+  mutate(itemType = ifelse(response=="y1ori","original","new")) %>% 
+  labelCondition()
+
+Plot_Pred_correct <- Table_Res_f_correct %>% 
+  summarySE(DV = value, within=c("condition","itemType"), group="participant") %>% 
+  ggplot(aes(x = itemType, y = mean, color = condition))+
+  geom_point()+
+  geom_errorbar(aes(ymin = mean-ci, ymax = mean+ci),width = 0.05)+
+  gghalves::geom_half_violin(
+    data = Table_Pred_correct,
+    mapping = aes(x = itemType, y = .epred, fill = condition),
+    position = "identity",
+    side = "r", nudge = 0.1, trim = TRUE
+  )+
+  labs(
+    title = "Correct",
+    tag = "A"
+  )+
+  ylim(0,1)+
+  theme(
+    legend.position = "inside",
+    legend.justification = c(1,0),
+    legend.position.inside = c(0.98,0.02),
+    axis.title = element_blank(),
+    axis.text = element_text(size = 10.5),
+  )
+
+```
+
+### 4.6.3 Transposition
+
+```{r}
+
+
+Table_Res_f_trans <- Table_Res_f %>% 
+  filter(str_detect(response,"y2|y3")) %>% 
+  mutate(itemType = ifelse(response=="y2","original","new")) %>% 
+  labelCondition()
+
+
+Table_Pred_trans <- Pred_M3 %>% 
+  filter(str_detect(response,"y2|y3")) %>% 
+  mutate(itemType = ifelse(response=="y2","original","new")) %>% 
+  labelCondition()
+
+Plot_Pred_trans <- Table_Res_f_trans %>% 
+  summarySE(DV = value, within=c("condition","itemType"), group="participant") %>% 
+  ggplot(aes(x = itemType, y = mean, color = condition))+
+  geom_point()+
+  geom_errorbar(aes(ymin = mean-ci, ymax = mean+ci),width = 0.05)+
+  gghalves::geom_half_violin(
+    data = Table_Pred_trans,
+    mapping = aes(x = itemType, y = .epred, fill = condition),
+    position = "identity",
+    side = "r", nudge = 0.1, trim = TRUE
+  )+
+  labs(
+    title = "Transpositions",
+    tag = "B"
+  )+
+  ylim(0,.3)+
+  theme(
+    axis.title = element_blank(),
+    axis.text = element_text(size = 10.5),
+    legend.position = "none"
+  )
 
 
 
+```
 
+### Outdated items
+```{r}
+
+Table_Res_f_out <- Table_Res_f %>% 
+  filter(str_detect(response,"y4|y5")) %>% 
+  mutate(recallPos = ifelse(response=="y4","original","other")) %>% 
+  labelCondition()
+
+
+Table_Pred_out <- Pred_M3 %>% 
+  filter(str_detect(response,"y4|y5")) %>% 
+  mutate(recallPos = ifelse(response=="y4","original","other")) %>% 
+  labelCondition()
+
+Plot_Pred_out <- Table_Res_f_out %>% 
+  summarySE(DV = value, within=c("condition","recallPos"), group="participant") %>% 
+  ggplot(aes(x = condition, y = mean, color = condition))+
+  geom_point()+
+  geom_errorbar(aes(ymin = mean-ci, ymax = mean+ci),width = 0.05)+
+  gghalves::geom_half_violin(
+    data = Table_Pred_out,
+    mapping = aes(x = condition, y = .epred, fill = condition),
+    position = "identity",
+    side = "r", nudge = 0.1, trim = TRUE
+  )+
+  facet_wrap(~ recallPos)+
+  labs(
+    title = "Outdated items",
+    tag = "C"
+  )+
+  ylim(0,.3)+
+  theme(
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text = element_text(size = 10.5),
+    legend.position = "none"
+  )
+
+```
+
+### NPL
+
+```{r}
+
+Table_Res_f_NPL <- Table_Res_f %>% 
+  filter(str_detect(response,"y6")) %>% 
+  labelCondition()
+
+
+Table_Pred_NPL <- Pred_M3 %>% 
+  filter(str_detect(response,"y6")) %>% 
+  labelCondition()
+
+Plot_Pred_NPL <- Table_Res_f_NPL %>% 
+  summarySE(DV = value, within=c("condition"), group="participant") %>% 
+  ggplot(aes(x = condition, y = mean, color = condition))+
+  geom_point()+
+  geom_errorbar(aes(ymin = mean-ci, ymax = mean+ci),width = 0.05)+
+  gghalves::geom_half_violin(
+    data = Table_Pred_out,
+    mapping = aes(x = condition, y = .epred, fill = condition),
+    position = "identity",
+    side = "r", nudge = 0.1, trim = TRUE
+  )+
+  labs(
+    title = "NPL",
+    tag = "D"
+  )+
+  ylim(0,.3)+
+  theme(
+    axis.title = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text = element_text(size = 10.5),
+    legend.position = "none"
+  )
+
+```
+
+### Combined plot
+
+```{r}
+
+Plot_Pred_Out_NPL <- ggarrange(Plot_Pred_out,Plot_Pred_NPL,widths = c(2,1))
+
+Plot_Pred_Error <- ggarrange(Plot_Pred_trans, Plot_Pred_Out_NPL, 
+                             ncol=1)
+
+Plot_Pred <- ggarrange(Plot_Pred_correct, Plot_Pred_Error)
+
+ggsave(
+  plot = Plot_Pred,
+  path = figure_path,
+  filename = "Plot_Exp1_Pred.pdf",
+  width = 10, height = 6
+)
+
+```
 

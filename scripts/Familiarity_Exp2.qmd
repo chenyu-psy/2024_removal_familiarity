@@ -146,6 +146,8 @@ Table_response <- Data_Res %>%
     names_to = "response", values_to = "value") %>% 
   summarySE(DV = value, within = c("miniblock"), between = c("response"), group = "participant") %>% 
   mutate( 
+    # correct block ID
+    miniblock = miniblock+1,
     # correct error bar
     upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
     lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
@@ -208,7 +210,10 @@ ggsave(
     ggplot(aes(x = miniblock, y = mean, color = response))+
     geom_point(position = dodge2)+
     geom_line(position = dodge2)+
-    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      position = dodge2, 
+      width = 0.1)+
     ylim(0,0.2)+
     labs(
       x = "Block", y = "Proportion of correct", 
@@ -257,6 +262,13 @@ ggsave(
       axis.text = element_text(size = 10.5))
 )
 
+ggsave(
+  plot = Plot_Res_Outdated,
+  path = figure_path,
+  filename = "Plot_Res_Outdated.pdf",
+  width = 6.5, height = 5
+)
+
 ```
 
 ### 3.2.4 NPL
@@ -276,6 +288,13 @@ ggsave(
       legend.position = "None",
       title = element_text(size = 11),
       axis.text = element_text(size = 10.5))
+)
+
+ggsave(
+  plot = Plot_Res_NPL,
+  path = figure_path,
+  filename = "Plot_Res_NPL.pdf",
+  width = 6.5, height = 5
 )
 
 
@@ -381,13 +400,13 @@ genM3Form <- function(choice_rule="softmax", model = "condition") {
         nlf(OutSame ~ iP*(ra*a + rc*c1 + b) + (1-iP)*(-100)),
         nlf(OutOther ~ ra*a + b),
         nlf(NPL ~ b),
-        nlf(a ~ ya),
+        nlf(a ~ ya + exp(ba)*t),
         nlf(c1 ~ yc1 + exp(bc1)*t),
         nlf(c2 ~ yc2 + exp(bc2)*t),
         nlf(ra ~ inv_logit(yra + bra*t)),
         nlf(rc ~ inv_logit(yrc + brc*t)),
         ya ~ 1 + (1 || participant),
-        # ba ~ 1 + (1 || participant),
+        ba ~ 1 + (1 || participant),
         yc1 ~ 1 + (1 || participant),
         bc1 ~ 1 + (1 || participant),
         yc2 ~ 1 + (1 || participant),
@@ -477,21 +496,21 @@ genM3Prior <- function(choice_rule="softmax", model = "condition") {
         prior(normal(3,1), class = "b", nlpar = "a2", lb = 0), 
         prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
         prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
-        prior(normal(0,1), class = "b", nlpar = "ra"),
-        prior(normal(0,1), class = "b", nlpar = "rc"),
+        prior(logistic(0,1), class = "b", nlpar = "ra"),
+        prior(logistic(0,1), class = "b", nlpar = "rc"),
         prior(constant(0), class = "b", nlpar = "b")
         )
     } else {
       M3_prior <- c(
         prior(normal(3,1), class = "b", nlpar = "ya"),
-        # prior(normal(-1,0.5), class = "b", nlpar = "ba"),
+        prior(normal(-1,0.5), class = "b", nlpar = "ba"),
         prior(normal(3,1), class = "b", nlpar = "yc1"),
         prior(normal(-1,0.5), class = "b", nlpar = "bc1"),
         prior(normal(3,1), class = "b", nlpar = "yc2"),
         prior(normal(-1,0.5), class = "b", nlpar = "bc2"),
-        prior(normal(0,1), class = "b", nlpar = "yra"),
+        prior(logistic(0,1), class = "b", nlpar = "yra"),
         prior(normal(0,1), class = "b", nlpar = "bra"),
-        prior(normal(0,1), class = "b", nlpar = "yrc"),
+        prior(logistic(0,1), class = "b", nlpar = "yrc"),
         prior(normal(0,1), class = "b", nlpar = "brc"),
         prior(constant(0), class = "b", nlpar = "b")
       )
@@ -573,52 +592,9 @@ smart_runFun(
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear_noat_bt")
+    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear_a")
     ),
-  name = "Model_Exp2_M3_Softmax_nonlinear_noat_bt"
-)
-
-
-# luce choice rule
-
-smart_runFun(
-  fun = brm,
-  args = list(
-    formula = genM3Form(choice_rule = "luce"),
-    data = mData_M3,
-    family = multinomial(refcat = NA),
-    prior = genM3Prior(choice_rule = "luce"),
-    chains = 8,
-    cores = 8,
-    iter = 10000,
-    warmup = 2500,
-    control = list(adapt_delta = 0.95),
-    save_pars = save_pars(all = TRUE),
-    sample_prior = "yes",
-    init = 0.1,
-    file = paste0(model_path, "Model_Exp2_M3_Luce")
-    ),
-  name = "Model_Exp2_M3_Luce"
-)
-
-smart_runFun(
-  fun = brm,
-  args = list(
-    formula = genM3Form(choice_rule = "luce", model = "nonlinear"),
-    data = mData_M3,
-    family = multinomial(refcat = NA),
-    prior = genM3Prior(choice_rule = "luce", model = "nonlinear"),
-    chains = 8,
-    cores = 8,
-    iter = 10000,
-    warmup = 2500,
-    control = list(adapt_delta = 0.98),
-    save_pars = save_pars(all = TRUE),
-    sample_prior = "yes",
-    init = 0,
-    file = paste0(model_path, "Model_Exp2_M3_Luce_nonlinear_a")
-    ),
-  name = "Model_Exp2_M3_Luce_nonlinear_a"
+  name = "Model_Exp2_M3_Softmax_nonlinear_a"
 )
 
 
