@@ -311,9 +311,103 @@ Plot_Res_combined <- ggpubr::ggarrange(
 ```
 
 
-# 4 Memory Measurement Model
+# Model fit
 
-## 4.1 Data and data transform
+## Learning effect
+
+### Data and data transform
+
+```{r}
+
+# Data -------------------------------------------------------------------------
+
+mData_Res <- Data_Res %>% 
+  pivot_longer(
+    cols = c(CorrectNew, CorrectOld, TransNew, TransOld, OutSame, OutOther, NPL),
+    names_to = "category",
+    values_to = "value"
+  ) %>%
+  summarize(
+    Resp = sum(value, na.rm = TRUE),
+    nResp = sum(!is.na(value)),
+    .by = c(participant, block, category)
+  ) %>% 
+  mutate(
+    itemType = case_when(
+      str_detect(category, "Old") ~ "Original",
+      str_detect(category, "New") ~ "New",
+      str_detect(category, "Out") ~ "Outdated",
+      TRUE ~ "NPL"),
+    response = case_when(
+      str_detect(category, "Correct|Same") ~ "correct",
+      TRUE ~ "incorrect"),
+    t = block - 1
+    )
+
+# Arguments --------------------------------------------------------------------
+
+Args_response <- list(
+  formula = Resp | trials(nResp) ~ 1 + itemType*t + (1 + itemType*t || participant),
+  family = binomial(),
+  prior = c(prior(normal(0,1), class = "b"), 
+            prior(student_t(3, 0, 2), class = "sd", lb = 0)),
+  chains = 8,
+  iter = 10000,
+  warmup = 2500,
+  cores = 8,
+  control = list(adapt_delta = 0.95, max_treedepth = 15),
+  save_pars = save_pars(all = TRUE)
+)
+
+```
+
+### Correct responses
+
+```{r}
+
+mData_Res_Correct <- mData_Res %>% 
+  filter(response == "correct",itemType %in% c("Original","New")) %>% 
+  mutate(itemType = factor(itemType))
+
+contrasts(mData_Res_Correct$itemType) = bayestestR::contr.equalprior(n = 2)
+
+smart_runFun(
+  fun = brm,
+  args = Args_response %>% append(list(
+      data = mData_Res_Correct,
+      file = str_glue("{model_path}Model_{task}_Correct.rds"))),
+  untilFinished = FALSE,
+  name = "Model_Exp2_Correct",
+)
+
+
+Model_Correct <- readRDS(str_glue("{model_path}Model_{task}_Correct.rds"))
+smart_runFun(
+  fun = unupdate,
+  args = list(model = Model_Correct),
+  untilFinished = TRUE,
+  export = "Prior_Correct"
+)
+bf_parameters(Model_Correct, Prior_Correct)
+
+
+
+'
+Parameter   |     BF
+--------------------
+(Intercept) |  0.053
+itemType1   | 620.71 # main effect of the item type
+t           | 115.21 # main effect of the block (leanring effect)
+itemType1:t |  0.058 # interaction
+'
+
+
+```
+
+
+## 4 Memory Measurement Model
+
+### 4.1 Data and data transform
 
 ```{r}
 
@@ -354,7 +448,7 @@ mData_M3_con <- Data_Res %>%
 ```
 
 
-## 4.2 Function
+### 4.2 Function
 
 ```{r}
 
@@ -382,7 +476,7 @@ genM3Form <- function(choice_rule="softmax", model = "condition") {
         c2 ~ 0 + condition + (0 + condition || participant),
         ra ~ 0 + condition + (0 + condition || participant),
         rc ~ 0 + condition + (0 + condition || participant),
-        b ~ 1,
+        b ~ 0 + condition,
         nl = TRUE
       )
     } else {
@@ -499,7 +593,8 @@ genM3Prior <- function(choice_rule="softmax", model = "condition") {
         prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
         prior(logistic(0,1), class = "b", nlpar = "ra"),
         prior(logistic(0,1), class = "b", nlpar = "rc"),
-        prior(constant(0), class = "b", nlpar = "b")
+        prior(constant(0), class = "b", nlpar = "b", coef = "conditionunfamiliar"),
+        prior(constant(1), class = "b", nlpar = "b", coef = "conditionfamiliar")
         )
     } else {
       M3_prior <- c(
@@ -552,7 +647,7 @@ genM3Prior <- function(choice_rule="softmax", model = "condition") {
 ```
 
 
-## 4.3 Model comparison
+### 4.3 Model comparison
 
 ```{r}
 
@@ -602,10 +697,10 @@ smart_runFun(
 ```
 
 
-## 4.4 Bayes factor
+### 4.4 Bayes factor
 ```{r}
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Softmax_condition.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_{task}_M3_Softmax_condition.rds"))
 
 Hypothesis <- hypothesis(Model_M3, c(
   a1 = "a1_conditionfamiliar = a1_conditionunfamiliar",
@@ -616,22 +711,25 @@ Hypothesis <- hypothesis(Model_M3, c(
   rc = "rc_conditionfamiliar = rc_conditionunfamiliar"
 ))
 
+Hypothesis$hypothesis %>% mutate(Evid.Ratio = 1/Evid.Ratio)
+
 plot(Hypothesis)
 
 '
-Hypothesis Tests for class b:
   Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
-1      rc_RU   -0.360     0.843  -2.0002    1.338    1.47874   0.59657     
-2      c1_EU    0.639     0.280   0.0923    1.194    0.36833   0.26918    *
-3      c1_KR    1.311     0.384   0.5802    2.093    0.00702   0.00697    *
-4      c2_EU    0.179     0.325  -0.4548    0.821    3.68727   0.78666     
+1         a1   -0.144     0.120   -0.368   0.0974      0.177    0.8496     
+2         c1    0.512     0.320   -0.113   1.1430      0.837    0.5444     
+3         a2   -0.178     0.121   -0.414   0.0622      0.245    0.8035     
+4         c2    0.751     0.236    0.288   1.2169     27.889    0.0346    *
+5         ra    0.650     2.206   -3.744   5.1226      0.878    0.5323     
+6         rc   -0.840     0.638   -2.303   0.2470      0.683    0.5943     
 '
 
 
 ```
 
 
-## 4.5 Posterior
+### 4.5 Posterior
 
 ```{r}
 
@@ -648,7 +746,7 @@ write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_nonlinear.rds
 
 # condition --------------------------------------------------------------------
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Softmax_condition.rds"))
+Model_M3 <- read_rds(str_glue("{model_path}Model_{task}_M3_Softmax_condition.rds"))
 
 Post_M3 <- Model_M3 %>% 
   extractPost("condition", par_name = "M3_par") %>% 
