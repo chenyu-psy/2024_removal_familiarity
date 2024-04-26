@@ -400,11 +400,12 @@ genM3Form <- function(choice_rule="softmax", model = "condition") {
         nlf(OutSame ~ iP*(ra*a + rc*c1 + b) + (1-iP)*(-100)),
         nlf(OutOther ~ ra*a + b),
         nlf(NPL ~ b),
-        nlf(a ~ ya + exp(ba)*t),
-        nlf(c1 ~ yc1 + exp(bc1)*t),
-        nlf(c2 ~ yc2 + exp(bc2)*t),
+        nlf(a ~ ya + ba*t),
+        nlf(c1 ~ yc1 + bc1*t),
+        nlf(c2 ~ yc2 + bc2*t),
         nlf(ra ~ inv_logit(yra + bra*t)),
         nlf(rc ~ inv_logit(yrc + brc*t)),
+        nlf(b ~ bb*t),
         ya ~ 1 + (1 || participant),
         ba ~ 1 + (1 || participant),
         yc1 ~ 1 + (1 || participant),
@@ -415,7 +416,7 @@ genM3Form <- function(choice_rule="softmax", model = "condition") {
         bra ~ 1 + (1 || participant),
         yrc ~ 1 + (1 || participant),
         brc ~ 1 + (1 || participant),
-        b ~ 1,
+        bb ~ 1,
         nl = TRUE
     )
       
@@ -503,16 +504,16 @@ genM3Prior <- function(choice_rule="softmax", model = "condition") {
     } else {
       M3_prior <- c(
         prior(normal(3,1), class = "b", nlpar = "ya"),
-        prior(normal(-1,0.5), class = "b", nlpar = "ba"),
+        prior(normal(0,0.5), class = "b", nlpar = "ba"),
         prior(normal(3,1), class = "b", nlpar = "yc1"),
-        prior(normal(-1,0.5), class = "b", nlpar = "bc1"),
+        prior(normal(0,0.5), class = "b", nlpar = "bc1"),
         prior(normal(3,1), class = "b", nlpar = "yc2"),
-        prior(normal(-1,0.5), class = "b", nlpar = "bc2"),
+        prior(normal(0,0.5), class = "b", nlpar = "bc2"),
         prior(logistic(0,1), class = "b", nlpar = "yra"),
         prior(normal(0,1), class = "b", nlpar = "bra"),
         prior(logistic(0,1), class = "b", nlpar = "yrc"),
         prior(normal(0,1), class = "b", nlpar = "brc"),
-        prior(constant(0), class = "b", nlpar = "b")
+        prior(constant(0.1), class = "b", nlpar = "bb")
       )
     }
     
@@ -592,9 +593,9 @@ smart_runFun(
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear_a")
+    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear_a_bt")
     ),
-  name = "Model_Exp2_M3_Softmax_nonlinear_a"
+  name = "Model_Exp2_M3_Softmax_nonlinear_a_bt"
 )
 
 
@@ -640,17 +641,10 @@ Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Softmax_nonlinear_a.rds
 Post_M3 <- Model_M3 %>% 
   gather_draws(`b_.*`, regex = TRUE) %>% 
   separate_wider_delim(.variable, "_", names = c(NA, "par", NA), cols_remove = TRUE) %>% 
-  pivot_wider(names_from = par, values_from = .value) %>% 
-  rowwise() %>% 
-  mutate(
-    ba = exp(ba),
-    bc1 = exp(bc1),
-    bc2 = exp(bc2)
-    ) %>% 
-  ungroup()
+  rename(post = .value)
 
 # Save the posterior
-write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_liner.rds"))
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_nonlinear.rds"))
 
 # condition --------------------------------------------------------------------
 

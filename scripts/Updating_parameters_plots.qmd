@@ -63,7 +63,7 @@ dir.create(file.path(figure_path), showWarnings = FALSE)
 Post_Exp1_M3 <- str_glue("{data_path}Post_Exp1_M3.rds") %>% readRDS()
 
 # Experiment 2
-Post_Exp2_M3_linear <- str_glue("{data_path}Post_Exp2_M3_linear.rds") %>% readRDS()
+Post_Exp2_M3_nonlinear <- str_glue("{data_path}Post_Exp2_M3_nonlinear.rds") %>% readRDS()
 Post_Exp2_M3_condition <- str_glue("{data_path}Post_Exp2_M3_condition.rds") %>% readRDS()
 
 
@@ -300,27 +300,25 @@ ggsave(
 ```
 
 
-# Experiment 2 (linear)
+# Experiment 2 (nonlinear)
 
 ## Data preparation
 ```{r}
 
-Post_Exp2_M3_pars <- Post_Exp2_M3_linear %>% 
-  pivot_longer(cols = !starts_with("."), names_to = "coef", values_to = "post") %>% 
+Post_Exp2_M3_pars <- Post_Exp2_M3_nonlinear %>% 
   filter(
    post > quantile(post, 0.005),
    post < quantile(post, 0.995),
-   .by = c(coef)
+   .by = c(par)
   )
 
-Table_Exp2_M3_curve <- Post_Exp2_M3_linear %>% 
-  pivot_longer(cols = !starts_with("."), names_to = "coef", values_to = "post") %>% 
+Table_Exp2_M3_curve <- Post_Exp2_M3_nonlinear %>% 
   summarise(
     mean = mean(post),
     n = n(),
     se = sd(post, na.rm = TRUE) / sqrt(n),
     ci = qt(1 - (1 - 0.95) / 2, n - 1) * se,
-    .by = c("coef")
+    .by = c(par)
   )
 
 
@@ -333,13 +331,13 @@ Table_Exp2_M3_curve <- Post_Exp2_M3_linear %>%
 ```{r}
 
 Plot_Exp2_r_par <- Post_Exp2_M3_pars %>%
-  filter(coef %in% c("yra","yrc","bra","brc")) %>% 
+  filter(par %in% c("yra","yrc","bra","brc")) %>% 
   mutate(
-    par = ifelse(str_detect(coef,"ra"),"Item memory","Binding memory"),
-    par = factor(par, levels = c("Item memory","Binding memory")),
-    parType = ifelse(str_detect(coef,"y"), "Intercept", "Slope"),
+    memory = ifelse(str_detect(par,"ra"),"Item memory","Binding memory"),
+    memory = factor(memory, levels = c("Item memory","Binding memory")),
+    parType = ifelse(str_detect(par,"y"), "Intercept", "Slope"),
   ) %>% 
-  ggplot(aes(x = par, y = post, fill = par)) +
+  ggplot(aes(x = memory, y = post,fill = "#615F63")) +
   gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
   facet_wrap(~ parType)+
@@ -366,21 +364,21 @@ ggsave(
 ```{r}
 
 Plot_Exp2_ac_par <- Post_Exp2_M3_pars %>%
-  filter(coef %in% c("ya","yc1","yc2","ba","bc1","bc2")) %>% 
+  filter(par %in% c("ya","yc1","yc2","ba","bc1","bc2")) %>% 
   mutate(
-    par = case_when(
-      str_detect(coef,"a") ~ "Item memory",
-      str_detect(coef,"c1") ~ "Binding memory (Original items)",
-      str_detect(coef,"c2") ~ "Binding memory (New items)"),
-    par = factor(
-      par, 
+    memory = case_when(
+      str_detect(par,"a") ~ "Item memory",
+      str_detect(par,"c1") ~ "Binding memory (Original items)",
+      str_detect(par,"c2") ~ "Binding memory (New items)"),
+    memory = factor(
+      memory, 
       levels = c("Item memory","Binding memory (Original items)", "Binding memory (New items)")),
-    parType = ifelse(str_detect(coef,"y"), "Intercept", "Slope"),
+    parType = ifelse(str_detect(par,"y"), "Intercept", "Slope"),
   ) %>% 
-  ggplot(aes(x = "par", y = post, fill = par)) +
+  ggplot(aes(x = "par", y = post, fill = "#615F63")) +
   gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
   stat_summary(fun.data = median_hdi, show.legend = FALSE)+
-  facet_grid(parType ~ par, scales = "free")+
+  facet_grid(parType ~ memory, scales = "free")+
   theme(
     legend.position = "none",
     axis.text = element_text(size = 11),
@@ -392,7 +390,7 @@ ggsave(
   plot = Plot_Exp2_ac_par,
   path = figure_path,
   filename = "Plot_Exp2_M3_par_ac.pdf",
-  width = 8, height = 4
+  width = 10, height = 5
 )
 
 
@@ -431,25 +429,26 @@ Plot_r <- ggplot2::ggplot()+
   ggplot2::geom_function(
     fun = r_fun, 
     args = list(
-      intercept = filter(Table_Exp2_M3_curve,coef=="yra")$mean[1], 
-      slope = filter(Table_Exp2_M3_curve,coef=="bra")$mean[1]),
-    mapping = aes(linetype = "Parameter ra")
+      intercept = filter(Table_Exp2_M3_curve,par=="yra")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,par=="bra")$mean[1]),
+    mapping = aes(linetype = "Item memory (ra)")
     )+
   ggplot2::geom_function(
     fun = r_fun, 
     args = list(
-      intercept = filter(Table_Exp2_M3_curve,coef=="yrc")$mean[1], 
-      slope = filter(Table_Exp2_M3_curve,coef=="brc")$mean[1]),
-    mapping = aes(linetype = "Parameter rc")
+      intercept = filter(Table_Exp2_M3_curve,par=="yrc")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,par=="brc")$mean[1]),
+    mapping = aes(linetype = "Binding memory (rc)")
     )+
   xlim(0,4)+
-  ylim(0.4,0.8)+
+  ylim(0,1)+
   labs(
     x = "Block",
+    linetype = "Parameter",
     title = "Removal parameter"
   )+
   scale_linetype_manual(
-    values = c("Parameter ra" = "solid", "Parameter rc" = "dashed"))+
+    values = c("Item memory (ra)" = "solid", "Binding memory (rc)" = "dashed"))+
   theme(
     axis.title.y = ggplot2::element_blank(),
     axis.text = ggplot2::element_text(size = 10.5),
@@ -472,28 +471,29 @@ Plot_ac <- ggplot2::ggplot()+
   ggplot2::geom_function(
     fun = ac_fun, 
     args = list(
-      intercept = filter(Table_Exp2_M3_curve,coef=="ya")$mean[1], 
-      slope = filter(Table_Exp2_M3_curve,coef=="ba")$mean[1]),
+      intercept = filter(Table_Exp2_M3_curve,par=="ya")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,par=="ba")$mean[1]),
     mapping = aes(linetype = "Item memory")
     )+
   ggplot2::geom_function(
     fun = ac_fun, 
     args = list(
-      intercept = filter(Table_Exp2_M3_curve,coef=="yc1")$mean[1], 
-      slope = filter(Table_Exp2_M3_curve,coef=="bc1")$mean[1]),
+      intercept = filter(Table_Exp2_M3_curve,par=="yc1")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,par=="bc1")$mean[1]),
     mapping = aes(linetype = "Binding memory (Original items)")
     )+
   ggplot2::geom_function(
     fun = ac_fun, 
     args = list(
-      intercept = filter(Table_Exp2_M3_curve,coef=="yc2")$mean[1], 
-      slope = filter(Table_Exp2_M3_curve,coef=="bc2")$mean[1]),
+      intercept = filter(Table_Exp2_M3_curve,par=="yc2")$mean[1], 
+      slope = filter(Table_Exp2_M3_curve,par=="bc2")$mean[1]),
     mapping = aes(linetype = "Binding memory (New items)")
     )+
   xlim(0,4)+
   ylim(0,4)+
   labs(
     x = "Block",
+    linetype = "Parameter",
     title = "Memory parameter"
   )+
   scale_linetype_manual(
