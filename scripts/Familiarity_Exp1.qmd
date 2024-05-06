@@ -16,8 +16,8 @@ graphics.off()
 rm(list=ls(all.names=TRUE))
 options(digits = 3)
 
-options(ggplot2.discrete.colour= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
-options(ggplot2.discrete.fill= c("#615F63","#FF7F6F","#2F7FC1","#FFBE7A","#8FC0A9","#8A1C56"))
+options(ggplot2.discrete.colour= c("#ff7700","#2F7FC1"))
+options(ggplot2.discrete.fill= c("#ff7700","#2F7FC1"))
 ```
 
 ## 1.2 Packages, theme setting and path
@@ -43,6 +43,12 @@ dodge1 = position_dodge(.1)
 dodge2 = position_dodge(.2)
 dodge3 = position_dodge(.3)
 dodge4 = position_dodge(.4)
+
+theme_test <- theme(
+  strip.text = element_text(size = 11, face = "bold"),
+  strip.background = element_rect(fill = "#bababa"),
+  axis.text = element_text(size = 10.5),
+)
 
 # task name
 task <- "Exp1"
@@ -163,17 +169,24 @@ Table_response <- Data_Res %>%
         levels = c("CorrectOld","CorrectNew"), 
         labels = c("Origianl items","New items"))
     ) %>% 
-    ggplot(aes(x = response, y = mean, color = condition))+
-    geom_point(position = dodge2)+
-    geom_errorbar(aes(ymax = upper, ymin = lower),position = dodge2, width = 0.1)+
+    ggplot(aes(x = response, y = mean, color = condition, fill = condition))+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      linewidth = 0.8,
+      width = 0.1,
+      position = dodge2)+
+    geom_point(
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
     ylim(0,1)+
     labs(
-      x = "Item type", y = "Proportion of correct", 
+      x = "Item type", 
+      y = "Proportion of correct", 
+      fill = "Condition",
       color = "Condition")+
-    theme(
-      # legend.position = "None",
-      title = element_text(size = 11),
-      axis.text = element_text(size = 10.5))
+    theme_test
 )
 
 ggsave(

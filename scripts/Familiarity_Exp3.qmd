@@ -1,0 +1,1038 @@
+---
+title: "data_analysis"
+author: "Chenyu Li"
+format: html
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+# 1 Initial setting
+
+## 1.1 clear workspacce and set default color
+
+```{r reset, include=FALSE}
+graphics.off()
+rm(list=ls(all.names=TRUE))
+options(digits = 3)
+
+options(ggplot2.discrete.colour= c("#ff7700","#2F7FC1"))
+options(ggplot2.discrete.fill= c("#ff7700","#2F7FC1"))
+```
+
+## 1.2 Packages, theme setting and path
+
+```{r primary setting, include=FALSE}
+
+# package list
+packages = c("tidyverse", "brms","ggpubr", "smartr","bmm","tidybayes","emmeans","bayestestR")
+# get the package names that are not installed
+missing_packages <- setdiff(packages, rownames(installed.packages()))
+# install the missing packages
+if (length(missing_packages) > 0) install.packages(missing_packages)
+# library package
+suppressMessages(sapply(packages, library, character.only = TRUE))
+
+
+# import private functions (do not print the output)
+nothing <- sapply(list.files("./functions", pattern = "*.R", full.names = TRUE), source)
+
+# theme
+theme_set(theme_bw())
+dodge1 = position_dodge(.1)
+dodge2 = position_dodge(.2)
+dodge3 = position_dodge(.3)
+dodge4 = position_dodge(.4)
+
+theme_train <- theme(
+  legend.position = "inside",
+  legend.justification = c(1,0),
+  legend.position.inside = c(0.98,0.02),
+  strip.text = element_text(size = 11, face = "bold"),
+  strip.background = element_rect(fill = "#bababa"),
+  axis.text = element_text(size = 10.5),
+)
+
+theme_test <- theme(
+  axis.text.y = element_blank(),
+  axis.ticks.y = element_blank(),
+  axis.title.y = element_blank(),
+  strip.text = element_text(size = 11, face = "bold"),
+  strip.background = element_rect(fill = "#bababa"),
+  axis.text = element_text(size = 10.5),
+)
+
+# task name
+task <- "Exp3"
+model_path <- str_glue("./models/Model-{task}/Models/")
+sample_path <- str_glue("./models/Model-{task}/Sample/")
+figure_path <- str_glue("./figures/figures-{task}/")
+log_path <- "./models/"
+bf_path = "./models/BayesFactor/"
+
+# check whether the folders are existent or not. If not, create a new one
+dir.create(file.path(model_path), showWarnings = FALSE)
+dir.create(file.path(sample_path), showWarnings = FALSE)
+dir.create(file.path(figure_path), showWarnings = FALSE)
+
+```
+
+
+# 2 Data processing
+
+## 2.1 Import data
+
+```{r}
+
+# Import Response data
+Raw_Res <- read_csv("./data/Data_Exp3_Res.csv")
+
+# Category and count response
+Data_Res <- Raw_Res %>% 
+  filter(screenID == "retrieval") %>% 
+  mutate(
+    participant = factor(participant),
+    npl_trained = substring(npl_items,1, 5),
+    npl_untrained = substring(npl_items,7, 11)) %>% 
+  select(-npl_items) %>%
+  classifyRes2(
+    npl_trained = npl_trained,
+    npl_untrained = npl_untrained,
+    groupLevel = c("participant", "block", "trial"))
+
+# Import Survey data
+Data_Survey <- read_csv("./data/Data_Exp3_Survey.csv")
+
+```
+
+## 2.2 Data cleaning
+
+```{r}
+
+excluding_list = Data_Survey %>% 
+  filter(!(str_detect(attention,"Yes") | str_detect(korean_question,"Never"))) %>% 
+  pull(participant)
+
+Data_Res <- Data_Res %>% 
+  filter(
+    !participant %in% excluding_list
+    )
+
+str_glue("{length(excluding_list)} participants are excluded from the analysis.") %>% message()
+
+Data_Train <- Data_Res %>% 
+  filter(expPart == "training")
+
+Data_Test <- Data_Res %>%
+  filter(expPart == "testing")
+
+```
+
+## 2.3 Create a table for the number of options
+
+```{r}
+
+# Create a table for the number of options
+Table_nOptions <- data.frame(
+  updPos = c("yes","no")) %>% 
+  mutate(nCorrect = 1,
+         nTransOld = ifelse(updPos=="yes" , 3, 2),
+         nTransNew = case_when(
+           updPos=="yes" ~ 2,
+           updPos=="no" ~ 3),
+         nOutSame = ifelse(updPos=="yes", 1, 1e-4),
+         nOutOther = case_when(
+           updPos=="yes" ~ 2, 
+           updPos=="no" ~ 3),
+         nNPLtrained = 3,
+         nNPLuntrained = 3)
+
+# Re-frame the table
+Columns_nOptions <- Table_nOptions %>% 
+  pivot_longer(cols = starts_with("n"), names_to ="response", values_to = "nOpt") %>% 
+  mutate(response = substring(response, 2))
+
+# Save it for drawing the figure
+write_csv(Columns_nOptions, str_glue("./figures/figures-Data/Data_{task}_nOptions.csv"))
+```
+
+# 3 Data visualization
+
+## 3.1.1 Data and data transform
+
+```{r}
+
+Table_Train <- Data_Train %>% 
+  select(
+    participant, block, ends_with("New"), 
+    ends_with("Old"), starts_with("Out"), starts_with("NPL",ignore.case=FALSE), NoRes) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out"), starts_with("NPL"), NoRes), 
+    names_to = "response", values_to = "value") %>% 
+  summarySE(DV = value, within = c("block"), between = c("response"), group = "participant") %>% 
+  mutate( 
+    # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
+  select(!c(ci,se,n)) %>% 
+  mutate(title = "Training phase")
+
+
+Table_Test_NPL <- Data_Test %>% 
+  select(
+    participant, condition, starts_with("NPL",ignore.case=FALSE)) %>%
+  pivot_longer(
+    cols = starts_with("NPL"), 
+    names_to = "response", 
+    values_to = "value"
+    ) %>%
+  summarySE(DV = value, between = c("response"), group = c("participant"))
+
+
+Table_Test <- Data_Test %>% 
+  select(
+    participant, condition, ends_with("New"), ends_with("Old"), starts_with("Out"),) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out")), 
+    names_to = "response", values_to = "value") %>% 
+  mutate(
+    char = case_when(
+      condition == "A" & response == "CorrectOld" ~ "trained",
+      condition == "A" & response == "TransOld" ~ "trained",
+      condition == "B" & response == "CorrectNew" ~ "trained",
+      condition == "B" & response == "TransNew" ~ "trained",
+      condition == "A" & str_detect(response, "Out") ~ "trained",
+      
+      condition == "B" & response == "CorrectOld" ~ "untrained",
+      condition == "B" & response == "TransOld" ~ "untrained",
+      condition == "A" & response == "CorrectNew" ~ "untrained",
+      condition == "A" & response == "TransNew" ~ "untrained",
+      condition == "B" & str_detect(response, "Out") ~ "untrained"),
+    char = factor(
+      char, 
+      levels = c("trained","untrained"),
+      labels = c("Familiar (Trained)","Unfamiliar (Untrained)"))
+  ) %>% 
+  summarySE(DV = value, within = c("char"), between = c("response"), group = "participant") %>% 
+  bind_rows(Table_Test_NPL) %>%
+  mutate( 
+    # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
+  select(!c(ci,se,n)) %>% 
+  mutate(title = "Testing phase")
+
+
+
+
+
+```
+
+## 3.2 Correct
+
+### 3.2.1 Training phase
+```{r}
+(
+  Plot_Train_Correct <- Table_Train %>% 
+    filter(str_detect(response,"Correct")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("CorrectOld","CorrectNew"), 
+        labels = c("Original items","New items"))
+    ) %>% 
+    ggplot(aes(x = factor(block), y = mean, group=response))+
+    geom_line(
+      aes(linetype = response),
+      color="#555555",
+      linewidth = 0.8,
+      position = dodge2)+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower,color=block),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.2,
+      show.legend = FALSE)+
+    geom_point(
+      aes(fill=block),
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    scale_colour_gradient(low = "#ff7700",high ="#2F7FC1")+
+    scale_fill_gradient(low = "#ff7700",high ="#2F7FC1")+
+    scale_linetype_manual(values = c("solid","dashed"))+
+    guides(fill="none", color="none")+
+    ylim(0,0.75)+
+    labs(
+      x = "Block", 
+      y = "Proportion of correct",
+      linetype = "Item")+
+    theme_train
+)
+
+
+```
+
+### 3.2.2 Testing phase
+
+```{r}
+
+(
+  Plot_Test_Correct <- Table_Test %>% 
+    filter(str_detect(response,"Correct")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("CorrectOld","CorrectNew"), 
+        labels = c("Original items","New items"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = char, fill=char))+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.1)+
+    geom_point(
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    ylim(0,0.75)+
+    scale_color_manual(values = c("#2F7FC1","#ff7700"))+
+    scale_fill_manual(values = c("#2F7FC1","#ff7700"))+
+    labs(
+      x = "", color = "Condition", fill = "Condition")+
+    theme_test
+)
+
+
+
+```
+
+
+### 3.2.3 Combine
+
+```{r}
+
+Plot_Correct <- ggarrange(
+  Plot_Train_Correct,
+  Plot_Test_Correct,
+  ncol = 2,
+  nrow = 1,
+  common.legend = FALSE
+)
+
+
+ggsave(
+  plot = Plot_Correct,
+  path = figure_path,
+  filename = "Plot_Res_Correct.pdf",
+  width = 9, height = 5
+)
+
+```
+
+
+## 3.3 Transpositions
+
+### 3.3.1 Training phase
+
+```{r}
+(
+  Plot_Train_Trans <- Table_Train %>% 
+    filter(str_detect(response,"Trans")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("TransOld","TransNew"), 
+        labels = c("Original items","New items"))
+    ) %>% 
+    ggplot(aes(x = factor(block), y = mean, group=response))+
+    geom_line(
+      aes(linetype = response),
+      color="#555555",
+      linewidth = 0.8,
+      position = dodge2)+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower,color=block),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.2,
+      show.legend = FALSE)+
+    geom_point(
+      aes(fill=block),
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    scale_colour_gradient(low = "#ff7700",high ="#2F7FC1")+
+    scale_fill_gradient(low = "#ff7700",high ="#2F7FC1")+
+    scale_linetype_manual(values = c("solid","dashed"))+
+    guides(fill="none", color="none")+
+    ylim(0,0.25)+
+    labs(
+      x = "Block", 
+      y = "Proportion of response",
+      linetype = "Item")+
+    theme_train+
+    theme(
+      legend.justification = c(1,1),
+      legend.position.inside = c(0.98,0.98))
+)
+
+```
+
+### 3.3.2 Testing phase
+
+```{r}
+
+(
+  Plot_Test_Trans <- Table_Test %>% 
+    filter(str_detect(response,"Trans")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("TransOld","TransNew"), 
+        labels = c("Original items","New items"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = char, fill=char))+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.1)+
+    geom_point(
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    ylim(0,0.25)+
+    labs(
+      x = "",
+      fill = "Condition",
+      color = "Condition")+
+    theme_test
+)
+
+```
+
+
+### 3.3.3 Combine
+
+```{r}
+
+Plot_Trans <- ggarrange(
+  Plot_Train_Trans,
+  Plot_Test_Trans,
+  ncol = 2,
+  nrow = 1,
+  common.legend = FALSE
+)
+
+
+ggsave(
+  plot = Plot_Trans,
+  path = figure_path,
+  filename = "Plot_Res_Trans.pdf",
+  width = 9, height = 5
+)
+
+```
+
+
+
+
+## 3.4 Outdated items
+
+### 3.4.1 Training phase
+```{r}
+(
+  Plot_Res_Out <- Table_Train %>% 
+    filter(str_detect(response,"Out")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("OutSame","OutOther"), 
+        labels = c("Original position","Other positions"))
+    ) %>% 
+    ggplot(aes(x = factor(block), y = mean, group = response))+
+    geom_line(
+      aes(linetype = response),
+      color="#555555",
+      linewidth = 0.8,
+      position = dodge2)+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower, color=block),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.2)+
+    geom_point(
+      aes(fill=block),
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    scale_colour_gradient(low = "#ff7700",high ="#2F7FC1")+
+    scale_fill_gradient(low = "#ff7700",high ="#2F7FC1")+
+    scale_linetype_manual(values = c("solid","dashed"))+
+    guides(fill="none", color="none")+
+    ylim(0,0.2)+
+    labs(
+      x = "Block", 
+      y = "Proportion of response",
+      linetype = "Position")+
+    theme_train+
+    theme(
+      legend.justification = c(1,1),
+      legend.position.inside = c(0.98,0.98))
+)
+
+```
+
+
+### 3.4.2 Testing phase
+
+```{r}
+
+(
+  Plot_Test_Out <- Table_Test %>% 
+    filter(str_detect(response,"Out")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("OutSame","OutOther"), 
+        labels = c("Original position","Other positions"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = char, fill=char))+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.1)+
+    geom_point(
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    ylim(0,0.25)+
+    scale_color_manual(values = c("#2F7FC1","#ff7700"))+
+    scale_fill_manual(values = c("#2F7FC1","#ff7700"))+
+    labs(
+      x = "",
+      fill = "Condition",
+      color = "Condition")+
+    theme_test
+)
+
+
+```
+
+### 3.4.3 Combine
+
+```{r}
+
+Plot_Out <- ggarrange(
+  Plot_Res_Out,
+  Plot_Test_Out,
+  ncol = 2,
+  nrow = 1,
+  common.legend = FALSE
+)
+
+ggsave(
+  plot = Plot_Out,
+  path = figure_path,
+  filename = "Plot_Res_Out.pdf",
+  width = 9, height = 5
+)
+
+```
+
+
+## 3.5 NPL
+
+### 3.5.1 Training phase
+
+```{r}
+(
+  Plot_Train_NPL <- Table_Train %>% 
+    filter(str_detect(response,"NPL")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("NPLtrained","NPLuntrained"), 
+        labels = c("NPL (Trained)","NPL (Untrained)"))
+    ) %>% 
+    ggplot(aes(
+      x = factor(block), y = mean, 
+      group=response, color = response, fill = response))+
+    geom_line(
+      linewidth = 0.8,
+      position = dodge2)+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.2)+
+    geom_point(
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    scale_linetype_manual(values = c("solid","dashed"))+
+    guides(fill="none", color="none")+
+    ylim(0,0.18)+
+    labs(
+      x = "Block", 
+      y = "Proportion of response",
+      linetype = "Response")+
+    theme_train+
+    theme(
+      legend.position = "none")
+)
+
+
+
+```
+
+### 3.5.2 Testing phase
+
+```{r}
+(
+  Plot_Test_NPL <- Table_Test %>% 
+    filter(str_detect(response,"NPL")) %>%
+    mutate(
+      response = factor(
+        response, 
+        levels = c("NPLtrained","NPLuntrained"), 
+        labels = c("NPL (Trained)","NPL (Untrained)"))
+    ) %>% 
+    ggplot(aes(x = response, y = mean, color = response, fill=response))+
+    geom_errorbar(
+      aes(ymax = upper, ymin = lower),
+      position = dodge2, 
+      linewidth = 0.8,
+      width = 0.1)+
+    geom_point(
+      size = 3,
+      shape = 23,
+      color = "black",
+      position = dodge2)+
+    facet_wrap(~title, scales = "free")+
+    ylim(0,0.18)+
+    labs(
+      x = "",
+      fill = "Condition",
+      color = "Condition")+
+    theme_test
+)
+
+```
+
+### 3.5.3 Combine
+
+```{r}
+
+Plot_NPL <- ggarrange(
+  Plot_Train_NPL,
+  Plot_Test_NPL,
+  ncol = 2,
+  nrow = 1,
+  common.legend = FALSE
+)
+
+
+ggsave(
+  plot = Plot_NPL,
+  path = figure_path,
+  filename = "Plot_Res_NPL.pdf",
+  width = 9, height = 5
+)
+
+```
+
+
+# 4 Model fit
+
+## 4.1 Learning effect
+
+### 4.1.1 Data and data transform
+
+```{r}
+
+# Data -------------------------------------------------------------------------
+
+mData_Res <- Data_Res %>% 
+  pivot_longer(
+    cols = c(CorrectNew, CorrectOld, TransNew, TransOld, OutSame, OutOther, NPL),
+    names_to = "category",
+    values_to = "value"
+  ) %>%
+  summarize(
+    Resp = sum(value, na.rm = TRUE),
+    nResp = sum(!is.na(value)),
+    .by = c(participant, block, category)
+  ) %>% 
+  mutate(
+    itemType = case_when(
+      str_detect(category, "Old") ~ "Original",
+      str_detect(category, "New") ~ "New",
+      str_detect(category, "Out") ~ "Outdated",
+      TRUE ~ "NPL"),
+    response = case_when(
+      str_detect(category, "Correct|Same") ~ "correct",
+      TRUE ~ "incorrect"),
+    t = block - 1
+    )
+
+# Arguments --------------------------------------------------------------------
+
+Args_response <- list(
+  formula = Resp | trials(nResp) ~ 1 + itemType*t + (1 + itemType*t || participant),
+  family = binomial(),
+  prior = c(prior(normal(0,1), class = "b"), 
+            prior(student_t(3, 0, 2), class = "sd", lb = 0)),
+  chains = 8,
+  iter = 10000,
+  warmup = 2500,
+  cores = 8,
+  control = list(adapt_delta = 0.95, max_treedepth = 15),
+  save_pars = save_pars(all = TRUE)
+)
+
+```
+
+### 4.1.2 Correct responses
+
+```{r}
+
+mData_Res_Correct <- mData_Res %>% 
+  filter(response == "correct",itemType %in% c("Original","New")) %>% 
+  mutate(itemType = factor(itemType))
+
+contrasts(mData_Res_Correct$itemType) = bayestestR::contr.equalprior(n = 2)
+
+smart_runFun(
+  fun = brm,
+  args = Args_response %>% append(list(
+      data = mData_Res_Correct,
+      file = str_glue("{model_path}Model_{task}_Correct.rds"))),
+  untilFinished = FALSE,
+  name = "Model_Exp2_Correct",
+)
+
+
+Model_Correct <- readRDS(str_glue("{model_path}Model_{task}_Correct.rds"))
+smart_runFun(
+  fun = unupdate,
+  args = list(model = Model_Correct),
+  untilFinished = TRUE,
+  export = "Prior_Correct"
+)
+bf_parameters(Model_Correct, Prior_Correct)
+
+
+
+'
+Parameter   |     BF
+--------------------
+(Intercept) |  0.053
+itemType1   | 620.71 # main effect of the item type
+t           | 115.21 # main effect of the block (leanring effect)
+itemType1:t |  0.058 # interaction
+'
+
+
+```
+
+
+## 4.2 Memory Measurement Model
+
+### 4.2.1 Data and data transform
+
+```{r}
+
+mData_M3_train <- Data_Res %>% 
+  tidy_M3(
+    responses = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPLtrained", "NPLuntrained"),
+    group = c("participant", "updPos", "block"),
+    DV_name = "y",
+    nDV_name = "nRet",
+    DV_numerical = TRUE
+  ) %>% 
+  left_join(Table_nOptions, by = "updPos") %>% 
+  mutate(
+    t = block - 1,
+    iP = ifelse(updPos == "yes", 1, 0)
+  )
+
+mData_M3_test <- Data_Res %>% 
+  mutate(condition = case_when(
+    order <= 10 ~ "unfamiliar",
+    order > 30 ~ "familiar",
+    TRUE ~ NA
+  )) %>% 
+  filter(!is.na(condition)) %>% 
+  tidy_M3(
+    responses = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPL"),
+    group = c("participant", "updPos", "condition"),
+    DV_name = "y",
+    nDV_name = "nRet",
+    DV_numerical = TRUE
+  ) %>% 
+  left_join(Table_nOptions, by = "updPos") %>% 
+  mutate(
+    condition = factor(condition),
+    iP = ifelse(updPos == "yes", 1, 0)
+  )
+
+```
+
+
+### 4.2.2 Function
+
+```{r}
+
+genM3Form <- function(phase="train") {
+  
+  if (phase=="train") {
+    M3_formula <- bf(
+        y | trials(nRet) ~ Correct + log(nCorrect),
+        nlf(mu2 ~ TransOld + log(nTransOld)),
+        nlf(mu3 ~ TransNew + log(nTransNew)),
+        nlf(mu4 ~ OutSame + log(nOutSame)),
+        nlf(mu5 ~ OutOther + log(nOutOther)),
+        nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+        nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+        nlf(Correct ~ (1-iP)*(a + c1) + iP*(a + c2) + b2),
+        nlf(TransOld ~ a + b2),
+        nlf(TransNew ~ a + b2),
+        nlf(OutSame ~ iP*(ra*a + rc*c1 + b2) + (1-iP)*(-100)),
+        nlf(OutOther ~ ra*a + b2),
+        nlf(NPLtrained ~ b2),
+        nlf(NPLuntrained ~ b1),
+        nlf(a ~ ya + ba*t),
+        nlf(c1 ~ yc1 + bc1*t),
+        nlf(c2 ~ yc2 + bc2*t),
+        nlf(ra ~ inv_logit(yra + bra*t)),
+        nlf(rc ~ inv_logit(yrc + brc*t)),
+        nlf(b2 ~ b + bb*t),
+        nlf(b1 ~ b),
+        ya ~ 1 + (1 || participant),
+        ba ~ 1 + (1 || participant),
+        yc1 ~ 1 + (1 || participant),
+        bc1 ~ 1 + (1 || participant),
+        yc2 ~ 1 + (1 || participant),
+        bc2 ~ 1 + (1 || participant),
+        yra ~ 1 + (1 || participant),
+        bra ~ 1 + (1 || participant),
+        yrc ~ 1 + (1 || participant),
+        brc ~ 1 + (1 || participant),
+        bb ~ 1 + (1 || participant),
+        b ~ 1,
+        nl = TRUE
+    )
+  } else {
+    M3_formula <- bf(
+        y | trials(nRet) ~ Correct + log(nCorrect),
+        nlf(mu2 ~ TransOld + log(nTransOld)),
+        nlf(mu3 ~ TransNew + log(nTransNew)),
+        nlf(mu4 ~ OutSame + log(nOutSame)),
+        nlf(mu5 ~ OutOther + log(nOutOther)),
+        nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+        nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
+        nlf(TransOld ~ a1 + b),
+        nlf(TransNew ~ a2 + b),
+        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) + (1-iP)*(-100)),
+        nlf(OutOther ~ inv_logit(ra)*a1 + b),
+        nlf(NPLtrained ~ b2),
+        nlf(NPLuntrained ~ b1),
+        a1 ~ 0 + condition + (0 + condition || participant),
+        c1 ~ 0 + condition + (0 + condition || participant),
+        a2 ~ 0 + condition + (0 + condition || participant),
+        c2 ~ 0 + condition + (0 + condition || participant),
+        ra ~ 0 + condition + (0 + condition || participant),
+        rc ~ 0 + condition + (0 + condition || participant),
+        bb ~ 1,
+        b ~ 1,
+        nl = TRUE
+      )
+    
+  }
+  
+  return (M3_formula)
+}
+
+genM3Prior <- function(phase="train") {
+  
+    if (phase == "train") {
+      M3_prior <- c(
+        prior(normal(3,1), class = "b", nlpar = "ya"),
+        prior(normal(0,0.5), class = "b", nlpar = "ba"),
+        prior(normal(3,1), class = "b", nlpar = "yc1"),
+        prior(normal(0,0.5), class = "b", nlpar = "bc1"),
+        prior(normal(3,1), class = "b", nlpar = "yc2"),
+        prior(normal(0,0.5), class = "b", nlpar = "bc2"),
+        prior(logistic(0,1), class = "b", nlpar = "yra"),
+        prior(normal(0,1), class = "b", nlpar = "bra"),
+        prior(logistic(0,1), class = "b", nlpar = "yrc"),
+        prior(normal(0,1), class = "b", nlpar = "brc"),
+        prior(normal(0, 1), class = "b", nlpar = "bb"),
+        prior(constant(0), class = "b", nlpar = "b")
+      )
+    } else {
+      M3_prior <- c(
+        prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
+        prior(normal(3,1), class = "b", nlpar = "a2", lb = 0), 
+        prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
+        prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
+        prior(logistic(0,1), class = "b", nlpar = "ra"),
+        prior(logistic(0,1), class = "b", nlpar = "rc"),
+        prior(constant(0), class = "b", nlpar = "b", coef = "conditionunfamiliar"),
+        prior(constant(1), class = "b", nlpar = "b", coef = "conditionfamiliar")
+        )
+    }
+    
+ 
+  return (M3_prior)
+}
+
+```
+
+
+### 4.2.3 Model comparison
+
+```{r}
+
+# Training phase ---------------------------------------------------------------
+
+smart_runFun(
+  fun = brm,
+  args = list(
+    formula = genM3Form(phase="train"),
+    data = mData_M3_train,
+    family = multinomial(refcat = NA),
+    prior = genM3Prior(phase = "train"),
+    chains = 4,
+    cores = 4,
+    iter = 5000,
+    warmup = 2000,
+    control = list(adapt_delta = 0.98),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0,
+    file = paste0(model_path, "Model_Exp3_M3_Training")
+    ),
+  name = "Model_Exp3_M3_Training"
+)
+
+# Testing phase ----------------------------------------------------------------
+smart_runFun(
+  fun = brm,
+  args = list(
+    formula = genM3Form(choice_rule = "softmax", model = "nonlinear"),
+    data = mData_M3,
+    family = multinomial(refcat = NA),
+    prior = genM3Prior(choice_rule = "softmax", model = "nonlinear"),
+    chains = 8,
+    cores = 8,
+    iter = 10000,
+    warmup = 2500,
+    control = list(adapt_delta = 0.98),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0,
+    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear_a_bt")
+    ),
+  name = "Model_Exp2_M3_Softmax_nonlinear_a_bt"
+)
+
+
+```
+
+
+### 4.2.4 Bayes factor
+```{r}
+
+Model_M3 <- read_rds(str_glue("{model_path}Model_{task}_M3_Softmax_condition.rds"))
+
+Hypothesis <- hypothesis(Model_M3, c(
+  a1 = "a1_conditionfamiliar = a1_conditionunfamiliar",
+  c1 = "c1_conditionfamiliar = c1_conditionunfamiliar",
+  a2 = "a2_conditionfamiliar = a2_conditionunfamiliar",
+  c2 = "c2_conditionfamiliar = c2_conditionunfamiliar",
+  ra = "ra_conditionfamiliar = ra_conditionunfamiliar",
+  rc = "rc_conditionfamiliar = rc_conditionunfamiliar"
+))
+
+Hypothesis$hypothesis %>% mutate(Evid.Ratio = 1/Evid.Ratio)
+
+plot(Hypothesis)
+
+'
+  Hypothesis Estimate Est.Error CI.Lower CI.Upper Evid.Ratio Post.Prob Star
+1         a1   -0.144     0.120   -0.368   0.0974      0.177    0.8496     
+2         c1    0.512     0.320   -0.113   1.1430      0.837    0.5444     
+3         a2   -0.178     0.121   -0.414   0.0622      0.245    0.8035     
+4         c2    0.751     0.236    0.288   1.2169     27.889    0.0346    *
+5         ra    0.650     2.206   -3.744   5.1226      0.878    0.5323     
+6         rc   -0.840     0.638   -2.303   0.2470      0.683    0.5943     
+'
+
+
+```
+
+
+### 4.2.5 Posterior
+
+```{r}
+
+# The original model
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Softmax_nonlinear_a.rds"))
+
+Post_M3 <- Model_M3 %>% 
+  gather_draws(`b_.*`, regex = TRUE) %>% 
+  separate_wider_delim(.variable, "_", names = c(NA, "par", NA), cols_remove = TRUE) %>% 
+  rename(post = .value)
+
+# Save the posterior
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_nonlinear.rds"))
+
+# condition --------------------------------------------------------------------
+
+Model_M3 <- read_rds(str_glue("{model_path}Model_{task}_M3_Softmax_condition.rds"))
+
+Post_M3 <- Model_M3 %>% 
+  extractPost("condition", par_name = "M3_par") %>% 
+  filter(!is.na(post), M3_par!="b") %>% 
+  pivot_wider(names_from = M3_par, values_from = post) %>% 
+  filter(!is.na(condition)) %>% 
+  rowwise() %>% 
+  mutate(
+    a2 = ifelse("a2" %in% names(.), a2, a1),
+    ra = ifelse("ra" %in% names(.), inv_logit_scaled(ra), 1),
+    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 1)
+    ) %>% 
+  ungroup() %>% 
+  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc)
+
+# Save the posterior
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_condition.rds"))
+
+
+```
+
+
+
+
+
+
