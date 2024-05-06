@@ -222,10 +222,6 @@ Table_Test <- Data_Test %>%
   select(!c(ci,se,n)) %>% 
   mutate(title = "Testing phase")
 
-
-
-
-
 ```
 
 ## 3.2 Correct
@@ -445,8 +441,6 @@ ggsave(
 ```
 
 
-
-
 ## 3.4 Outdated items
 
 ### 3.4.1 Training phase
@@ -589,7 +583,7 @@ ggsave(
     facet_wrap(~title, scales = "free")+
     scale_linetype_manual(values = c("solid","dashed"))+
     guides(fill="none", color="none")+
-    ylim(0,0.18)+
+    ylim(0,0.125)+
     labs(
       x = "Block", 
       y = "Proportion of response",
@@ -620,14 +614,14 @@ ggsave(
       aes(ymax = upper, ymin = lower),
       position = dodge2, 
       linewidth = 0.8,
-      width = 0.1)+
+      width = 0.05)+
     geom_point(
       size = 3,
       shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
-    ylim(0,0.18)+
+    ylim(0,0.125)+
     labs(
       x = "",
       fill = "Condition",
