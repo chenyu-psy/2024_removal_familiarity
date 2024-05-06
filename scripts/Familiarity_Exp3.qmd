@@ -186,7 +186,13 @@ Table_Test_NPL <- Data_Test %>%
     names_to = "response", 
     values_to = "value"
     ) %>%
-  summarySE(DV = value, between = c("response"), group = c("participant"))
+  summarySE(DV = value, between = c("response","condition"), group = c("participant")) %>% 
+  mutate( 
+    # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
+  select(!c(ci,se,n)) %>% 
+  mutate(title = "Testing phase")
 
 
 Table_Test <- Data_Test %>% 
@@ -214,7 +220,6 @@ Table_Test <- Data_Test %>%
       labels = c("Familiar (Trained)","Unfamiliar (Untrained)"))
   ) %>% 
   summarySE(DV = value, within = c("char"), between = c("response"), group = "participant") %>% 
-  bind_rows(Table_Test_NPL) %>%
   mutate( 
     # correct error bar
     upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
@@ -607,15 +612,14 @@ ggsave(
 
 ```{r}
 (
-  Plot_Test_NPL <- Table_Test %>% 
-    filter(str_detect(response,"NPL")) %>%
+  Plot_Test_NPL <- Table_Test_NPL %>% 
     mutate(
       response = factor(
         response, 
         levels = c("NPLtrained","NPLuntrained"), 
         labels = c("NPL (Trained)","NPL (Untrained)"))
     ) %>% 
-    ggplot(aes(x = response, y = mean, color = response, fill=response))+
+    ggplot(aes(x = condition, y = mean, color = response, fill=response))+
     geom_errorbar(
       aes(ymax = upper, ymin = lower),
       position = dodge2, 
@@ -626,12 +630,12 @@ ggsave(
       shape = 23,
       color = "black",
       position = dodge2)+
-    facet_wrap(~title, scales = "free")+
+    facet_wrap(~ title, scales = "free")+
     ylim(0,0.18)+
     labs(
-      x = "",
-      fill = "Condition",
-      color = "Condition")+
+      x = "Condition",
+      fill = "Response Category",
+      color = "Response Category")+
     theme_test
 )
 
@@ -771,7 +775,8 @@ mData_M3_train <- Data_Train %>%
   left_join(Table_nOptions, by = "updPos") %>% 
   mutate(
     t = block - 1,
-    iP = ifelse(updPos == "yes", 1, 0)
+    iP = ifelse(updPos == "yes", 1, 0),
+    condition = factor(block)
   )
 
 mData_M3_test <- Data_Test %>% 
@@ -802,10 +807,11 @@ mData_M3_test <- Data_Test %>%
 
 ```{r}
 
-genM3Form <- function(phase="train") {
+genM3Form <- function(phase="train",test="linear") {
   
   if (phase=="train") {
-    M3_formula <- bf(
+    if (test=="linear") {
+      M3_formula <- bf(
         y | trials(nRet) ~ Correct + log(nCorrect),
         nlf(mu2 ~ TransOld + log(nTransOld)),
         nlf(mu3 ~ TransNew + log(nTransNew)),
@@ -841,6 +847,36 @@ genM3Form <- function(phase="train") {
         b ~ 1,
         nl = TRUE
     )
+    } else {
+      M3_formula <- bf(
+        y | trials(nRet) ~ Correct + log(nCorrect),
+        nlf(mu2 ~ TransOld + log(nTransOld)),
+        nlf(mu3 ~ TransNew + log(nTransNew)),
+        nlf(mu4 ~ OutSame + log(nOutSame)),
+        nlf(mu5 ~ OutOther + log(nOutOther)),
+        nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+        nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b2),
+        nlf(TransOld ~ a1 + b2),
+        nlf(TransNew ~ a2 + b2),
+        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b2) + (1-iP)*(-100)),
+        nlf(OutOther ~ inv_logit(ra)*a1 + b2),
+        nlf(NPLtrained ~ b2),
+        nlf(NPLuntrained ~ b1),
+        nlf(b2 ~ b + bb),
+        nlf(b1 ~ b),
+        a1 ~ 0 + condition + (0 + condition || participant),
+        c1 ~ 0 + condition + (0 + condition || participant),
+        a2 ~ 0 + condition + (0 + condition || participant),
+        c2 ~ 0 + condition + (0 + condition || participant),
+        ra ~ 0 + condition + (0 + condition || participant),
+        rc ~ 0 + condition + (0 + condition || participant),
+        bb ~ 1 + (1 || participant),
+        b ~ 1,
+        nl = TRUE
+      )
+    }
+    
   } else {
     M3_formula <- bf(
         y | trials(nRet) ~ Correct + log(nCorrect),
@@ -865,7 +901,7 @@ genM3Form <- function(phase="train") {
         c2 ~ 0 + condition + (0 + condition || participant),
         ra ~ 0 + condition + (0 + condition || participant),
         rc ~ 0 + condition + (0 + condition || participant),
-        bb ~ 1 + (1 || participant),
+        bb ~ 0 + condition + (1 || participant),
         b ~ 1,
         nl = TRUE
       )
@@ -875,9 +911,9 @@ genM3Form <- function(phase="train") {
   return (M3_formula)
 }
 
-genM3Prior <- function(phase="train") {
+genM3Prior <- function(phase="train", test="linear") {
   
-    if (phase == "train") {
+    if (phase == "train" & test=="linear") {
       M3_prior <- c(
         prior(normal(3,1), class = "b", nlpar = "ya"),
         prior(normal(0,0.5), class = "b", nlpar = "ba"),
@@ -900,7 +936,7 @@ genM3Prior <- function(phase="train") {
         prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
         prior(logistic(0,1), class = "b", nlpar = "ra"),
         prior(logistic(0,1), class = "b", nlpar = "rc"),
-        prior(normal(0, 1), class = "b", nlpar = "bb"),
+        prior(normal(0, 0.5), class = "b", nlpar = "bb"),
         prior(constant(0), class = "b", nlpar = "b")
         )
     }
@@ -925,10 +961,10 @@ smart_runFun(
     data = mData_M3_train,
     family = multinomial(refcat = NA),
     prior = genM3Prior(phase = "train"),
-    chains = 4,
-    cores = 4,
-    iter = 5000,
-    warmup = 2000,
+    chains = 8,
+    cores = 8,
+    iter = 10000,
+    warmup = 2500,
     control = list(adapt_delta = 0.98),
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
@@ -938,18 +974,38 @@ smart_runFun(
   name = "Model_Exp3_M3_Training"
 )
 
+smart_runFun(
+  fun = brm,
+  args = list(
+    formula = genM3Form(phase="train",test="condition"),
+    data = mData_M3_train,
+    family = multinomial(refcat = NA),
+    prior = genM3Prior(phase = "train",test="condition"),
+    chains = 8,
+    cores = 8,
+    iter = 10000,
+    warmup = 2500,
+    control = list(adapt_delta = 0.98),
+    save_pars = save_pars(all = TRUE),
+    sample_prior = "yes",
+    init = 0,
+    file = paste0(model_path, "Model_Exp3_M3_Training_condition")
+    ),
+  name = "Model_Exp3_M3_Training_condition"
+)
+
 # Testing phase ----------------------------------------------------------------
 smart_runFun(
   fun = brm,
   args = list(
     formula = genM3Form(phase="test"),
-    data = mData_M3,
+    data = mData_M3_test,
     family = multinomial(refcat = NA),
     prior = genM3Prior(phase="test"),
-    chains = 4,
-    cores = 4,
-    iter = 5000,
-    warmup = 2000,
+    chains = 8,
+    cores = 8,
+    iter = 10000,
+    warmup = 2500,
     control = list(adapt_delta = 0.98),
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
