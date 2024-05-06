@@ -760,7 +760,7 @@ itemType1:t |  0.058 # interaction
 
 ```{r}
 
-mData_M3_train <- Data_Res %>% 
+mData_M3_train <- Data_Train %>% 
   tidy_M3(
     responses = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPLtrained", "NPLuntrained"),
     group = c("participant", "updPos", "block"),
@@ -774,15 +774,9 @@ mData_M3_train <- Data_Res %>%
     iP = ifelse(updPos == "yes", 1, 0)
   )
 
-mData_M3_test <- Data_Res %>% 
-  mutate(condition = case_when(
-    order <= 10 ~ "unfamiliar",
-    order > 30 ~ "familiar",
-    TRUE ~ NA
-  )) %>% 
-  filter(!is.na(condition)) %>% 
+mData_M3_test <- Data_Test %>% 
   tidy_M3(
-    responses = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPL"),
+    responses = c("Correct", "TransOld", "TransNew", "OutSame", "OutOther", "NPLtrained", "NPLuntrained"),
     group = c("participant", "updPos", "condition"),
     DV_name = "y",
     nDV_name = "nRet",
@@ -791,7 +785,14 @@ mData_M3_test <- Data_Res %>%
   left_join(Table_nOptions, by = "updPos") %>% 
   mutate(
     condition = factor(condition),
-    iP = ifelse(updPos == "yes", 1, 0)
+    iP = ifelse(updPos == "yes", 1, 0),
+    iC = ifelse(condition == "A", 1, 0),
+    iM = case_when(
+      condition == "A" & updPos == "yes" ~ 0,
+      condition == "A" & updPos == "no" ~ 1,
+      condition == "B" & updPos == "yes" ~ 1,
+      condition == "B" & updPos == "no" ~ 0
+    )
   )
 
 ```
@@ -849,20 +850,22 @@ genM3Form <- function(phase="train") {
         nlf(mu5 ~ OutOther + log(nOutOther)),
         nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
         nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
-        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
-        nlf(TransOld ~ a1 + b),
-        nlf(TransNew ~ a2 + b),
-        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) + (1-iP)*(-100)),
-        nlf(OutOther ~ inv_logit(ra)*a1 + b),
+        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + iM*b2 + (1-iM)*b1),
+        nlf(TransOld ~ a1 + iC*b2 + (1-iC)*b1),
+        nlf(TransNew ~ a2 + iC*b1 + (1-iC)*b2),
+        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + iC*b2 + (1-iC)*b1) + (1-iP)*(-100)),
+        nlf(OutOther ~ inv_logit(ra)*a1 + iC*b2 + (1-iC)*b1),
         nlf(NPLtrained ~ b2),
         nlf(NPLuntrained ~ b1),
+        nlf(b2 ~ b + bb),
+        nlf(b1 ~ b),
         a1 ~ 0 + condition + (0 + condition || participant),
         c1 ~ 0 + condition + (0 + condition || participant),
         a2 ~ 0 + condition + (0 + condition || participant),
         c2 ~ 0 + condition + (0 + condition || participant),
         ra ~ 0 + condition + (0 + condition || participant),
         rc ~ 0 + condition + (0 + condition || participant),
-        bb ~ 1,
+        bb ~ 1 + (1 || participant),
         b ~ 1,
         nl = TRUE
       )
@@ -886,7 +889,7 @@ genM3Prior <- function(phase="train") {
         prior(normal(0,1), class = "b", nlpar = "bra"),
         prior(logistic(0,1), class = "b", nlpar = "yrc"),
         prior(normal(0,1), class = "b", nlpar = "brc"),
-        prior(normal(0, 1), class = "b", nlpar = "bb"),
+        prior(normal(0, 0.5), class = "b", nlpar = "bb"),
         prior(constant(0), class = "b", nlpar = "b")
       )
     } else {
@@ -897,8 +900,8 @@ genM3Prior <- function(phase="train") {
         prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
         prior(logistic(0,1), class = "b", nlpar = "ra"),
         prior(logistic(0,1), class = "b", nlpar = "rc"),
-        prior(constant(0), class = "b", nlpar = "b", coef = "conditionunfamiliar"),
-        prior(constant(1), class = "b", nlpar = "b", coef = "conditionfamiliar")
+        prior(normal(0, 1), class = "b", nlpar = "bb"),
+        prior(constant(0), class = "b", nlpar = "b")
         )
     }
     
@@ -939,21 +942,21 @@ smart_runFun(
 smart_runFun(
   fun = brm,
   args = list(
-    formula = genM3Form(choice_rule = "softmax", model = "nonlinear"),
+    formula = genM3Form(phase="test"),
     data = mData_M3,
     family = multinomial(refcat = NA),
-    prior = genM3Prior(choice_rule = "softmax", model = "nonlinear"),
-    chains = 8,
-    cores = 8,
-    iter = 10000,
-    warmup = 2500,
+    prior = genM3Prior(phase="test"),
+    chains = 4,
+    cores = 4,
+    iter = 5000,
+    warmup = 2000,
     control = list(adapt_delta = 0.98),
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp2_M3_Softmax_nonlinear_a_bt")
+    file = paste0(model_path, "Model_Exp3_M3_Testing")
     ),
-  name = "Model_Exp2_M3_Softmax_nonlinear_a_bt"
+  name = "Model_Exp3_M3_Testing"
 )
 
 
