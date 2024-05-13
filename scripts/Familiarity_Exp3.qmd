@@ -16,8 +16,8 @@ graphics.off()
 rm(list=ls(all.names=TRUE))
 options(digits = 3)
 
-options(ggplot2.discrete.colour= c("#ff7700","#2F7FC1"))
-options(ggplot2.discrete.fill= c("#ff7700","#2F7FC1"))
+options(ggplot2.discrete.colour= c("#2F7FC1", "#ff7700"))
+options(ggplot2.discrete.fill= c("#2F7FC1", "#ff7700"))
 ```
 
 ## 1.2 Packages, theme setting and path
@@ -137,13 +137,9 @@ Table_nOptions <- data.frame(
   updPos = c("yes","no")) %>% 
   mutate(nCorrect = 1,
          nTransOld = ifelse(updPos=="yes" , 3, 2),
-         nTransNew = case_when(
-           updPos=="yes" ~ 2,
-           updPos=="no" ~ 3),
+         nTransNew = ifelse( updPos=="yes",2,3),
          nOutSame = ifelse(updPos=="yes", 1, 1e-4),
-         nOutOther = case_when(
-           updPos=="yes" ~ 2, 
-           updPos=="no" ~ 3),
+         nOutOther = ifelse(updPos=="yes", 2, 3),
          nNPLtrained = 3,
          nNPLuntrained = 3)
 
@@ -179,14 +175,22 @@ Table_Train <- Data_Train %>%
 
 
 Table_Test_NPL <- Data_Test %>% 
+  mutate(
+    testItem = case_when(
+      condition == "A" & updPos == "yes" ~ "Untrained",
+      condition == "A" & updPos == "no" ~ "Trained",
+      condition == "B" & updPos == "yes" ~ "Trained",
+      condition == "B" & updPos == "no" ~ "Untrained"
+    )
+  ) %>% 
   select(
-    participant, condition, starts_with("NPL",ignore.case=FALSE)) %>%
+    participant, testItem, starts_with("NPL",ignore.case=FALSE)) %>%
   pivot_longer(
     cols = starts_with("NPL"), 
     names_to = "response", 
     values_to = "value"
     ) %>%
-  summarySE(DV = value, between = c("response","condition"), group = c("participant")) %>% 
+  summarySE(DV = value, between = c("response","testItem"), group = c("participant")) %>% 
   mutate( 
     # correct error bar
     upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
@@ -197,7 +201,7 @@ Table_Test_NPL <- Data_Test %>%
 
 Table_Test <- Data_Test %>% 
   select(
-    participant, condition, ends_with("New"), ends_with("Old"), starts_with("Out"),) %>% 
+    participant, condition, updPos, ends_with("New"), ends_with("Old"), starts_with("Out")) %>% 
   pivot_longer(
     cols = c(ends_with("New"), ends_with("Old"), starts_with("Out")), 
     names_to = "response", values_to = "value") %>% 
@@ -219,15 +223,13 @@ Table_Test <- Data_Test %>%
       levels = c("trained","untrained"),
       labels = c("Familiar (Trained)","Unfamiliar (Untrained)"))
   ) %>% 
-  summarySE(DV = value, within = c("char"), between = c("response"), group = "participant") %>% 
+  summarySE(DV = value, within = c("char"), between = c("response","updPos"), group = "participant") %>% 
   mutate( 
     # correct error bar
     upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
     lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
   select(!c(ci,se,n)) %>% 
   mutate(title = "Testing phase")
-
-
 
 
 
@@ -248,7 +250,6 @@ Table_Test <- Data_Test %>%
     ) %>% 
     ggplot(aes(x = factor(block), y = mean, group=response))+
     geom_line(
-      aes(linetype = response),
       color="#555555",
       linewidth = 0.8,
       position = dodge2)+
@@ -259,22 +260,25 @@ Table_Test <- Data_Test %>%
       width = 0.2,
       show.legend = FALSE)+
     geom_point(
-      aes(fill=block),
+      aes(shape = response, fill=block),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
+    scale_shape_manual(values = c(21,23))+
     scale_colour_gradient(low = "#ff7700",high ="#2F7FC1")+
     scale_fill_gradient(low = "#ff7700",high ="#2F7FC1")+
     scale_linetype_manual(values = c("solid","dashed"))+
-    guides(fill="none", color="none")+
+    # guides(fill="none", color="none")+
     ylim(0,0.75)+
     labs(
       x = "Block", 
       y = "Proportion of correct",
-      linetype = "Item")+
-    theme_train
+      shape = "Item")+
+    theme_train+
+    theme(
+      legend.position = "none"
+    )
 )
 
 
@@ -300,16 +304,18 @@ Table_Test <- Data_Test %>%
       linewidth = 0.8,
       width = 0.1)+
     geom_point(
+      aes(shape = response),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
     ylim(0,0.75)+
+    scale_shape_manual(values = c(21,23))+
     scale_color_manual(values = c("#2F7FC1","#ff7700"))+
     scale_fill_manual(values = c("#2F7FC1","#ff7700"))+
+    guides(fill="none")+
     labs(
-      x = "", color = "Condition", fill = "Condition")+
+      x = "Item", color = "Condition", shape = "Item")+
     theme_test
 )
 
@@ -357,7 +363,6 @@ ggsave(
     ) %>% 
     ggplot(aes(x = factor(block), y = mean, group=response))+
     geom_line(
-      aes(linetype = response),
       color="#555555",
       linewidth = 0.8,
       position = dodge2)+
@@ -368,12 +373,12 @@ ggsave(
       width = 0.2,
       show.legend = FALSE)+
     geom_point(
-      aes(fill=block),
+      aes(shape = response, fill=block),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
+    scale_shape_manual(values = c(21,23))+
     scale_colour_gradient(low = "#ff7700",high ="#2F7FC1")+
     scale_fill_gradient(low = "#ff7700",high ="#2F7FC1")+
     scale_linetype_manual(values = c("solid","dashed"))+
@@ -385,8 +390,7 @@ ggsave(
       linetype = "Item")+
     theme_train+
     theme(
-      legend.justification = c(1,1),
-      legend.position.inside = c(0.98,0.98))
+      legend.position = "none")
 )
 
 ```
@@ -411,15 +415,17 @@ ggsave(
       linewidth = 0.8,
       width = 0.1)+
     geom_point(
+      aes(shape = response),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
     ylim(0,0.25)+
+    scale_shape_manual(values = c(21,23))+
+    guides(fill="none")+
     labs(
-      x = "",
-      fill = "Condition",
+      x = "Item",
+      shape = "Item",
       color = "Condition")+
     theme_test
 )
@@ -450,8 +456,6 @@ ggsave(
 ```
 
 
-
-
 ## 3.4 Outdated items
 
 ### 3.4.1 Training phase
@@ -467,26 +471,25 @@ ggsave(
     ) %>% 
     ggplot(aes(x = factor(block), y = mean, group = response))+
     geom_line(
-      aes(linetype = response),
       color="#555555",
       linewidth = 0.8,
       position = dodge2)+
     geom_errorbar(
-      aes(ymax = upper, ymin = lower, color=block),
+      aes(ymax = upper, ymin = lower,color=block),
       position = dodge2, 
       linewidth = 0.8,
-      width = 0.2)+
+      width = 0.2,
+      show.legend = FALSE)+
     geom_point(
-      aes(fill=block),
+      aes(shape = response, fill=block),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
+    scale_shape_manual(values = c(21,23))+
     scale_colour_gradient(low = "#ff7700",high ="#2F7FC1")+
     scale_fill_gradient(low = "#ff7700",high ="#2F7FC1")+
     scale_linetype_manual(values = c("solid","dashed"))+
-    guides(fill="none", color="none")+
     ylim(0,0.2)+
     labs(
       x = "Block", 
@@ -494,8 +497,7 @@ ggsave(
       linetype = "Position")+
     theme_train+
     theme(
-      legend.justification = c(1,1),
-      legend.position.inside = c(0.98,0.98))
+      legend.position = "none")
 )
 
 ```
@@ -521,17 +523,19 @@ ggsave(
       linewidth = 0.8,
       width = 0.1)+
     geom_point(
+      aes(shape = response),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
     ylim(0,0.25)+
+    scale_shape_manual(values = c(21,23))+
     scale_color_manual(values = c("#2F7FC1","#ff7700"))+
     scale_fill_manual(values = c("#2F7FC1","#ff7700"))+
+    guides(fill="none")+
     labs(
-      x = "",
-      fill = "Condition",
+      x = "Position",
+      shape = "Position",
       color = "Condition")+
     theme_test
 )
@@ -579,22 +583,25 @@ ggsave(
       x = factor(block), y = mean, 
       group=response, color = response, fill = response))+
     geom_line(
+      color="#555555",
       linewidth = 0.8,
       position = dodge2)+
     geom_errorbar(
       aes(ymax = upper, ymin = lower),
       position = dodge2, 
       linewidth = 0.8,
-      width = 0.2)+
+      width = 0.2,
+      show.legend = FALSE)+
     geom_point(
+      aes(shape = response),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
     facet_wrap(~title, scales = "free")+
+    scale_shape_manual(values = c(21,23))+
     scale_linetype_manual(values = c("solid","dashed"))+
     guides(fill="none", color="none")+
-    ylim(0,0.18)+
+    ylim(0,0.15)+
     labs(
       x = "Block", 
       y = "Proportion of response",
@@ -619,23 +626,26 @@ ggsave(
         levels = c("NPLtrained","NPLuntrained"), 
         labels = c("NPL (Trained)","NPL (Untrained)"))
     ) %>% 
-    ggplot(aes(x = condition, y = mean, color = response, fill=response))+
+    ggplot(aes(x = testItem, y = mean, color = response, fill=response))+
     geom_errorbar(
       aes(ymax = upper, ymin = lower),
       position = dodge2, 
       linewidth = 0.8,
       width = 0.1)+
     geom_point(
+      aes(shape = response),
       size = 3,
-      shape = 23,
       color = "black",
       position = dodge2)+
-    facet_wrap(~ title, scales = "free")+
-    ylim(0,0.18)+
+    facet_wrap(~title, scales = "free")+
+    ylim(0,0.15)+
+    scale_shape_manual(values = c(21,23))+
+    # guides(fill="none")+
     labs(
-      x = "Condition",
-      fill = "Response Category",
-      color = "Response Category")+
+      x = "Tested item",
+      fill = "Response category",
+      shape = "Response category",
+      color = "Response category")+
     theme_test
 )
 
@@ -791,12 +801,11 @@ mData_M3_test <- Data_Test %>%
   mutate(
     condition = factor(condition),
     iP = ifelse(updPos == "yes", 1, 0),
-    iC = ifelse(condition == "A", 1, 0),
     iM = case_when(
-      condition == "A" & updPos == "yes" ~ 0,
       condition == "A" & updPos == "no" ~ 1,
-      condition == "B" & updPos == "yes" ~ 1,
-      condition == "B" & updPos == "no" ~ 0
+      condition == "A" & updPos == "yes" ~ 0,
+      condition == "B" & updPos == "no" ~ 0,
+      condition == "B" & updPos == "yes" ~ 1
     )
   )
 
@@ -819,22 +828,25 @@ genM3Form <- function(phase="train",test="linear") {
         nlf(mu5 ~ OutOther + log(nOutOther)),
         nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
         nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
-        nlf(Correct ~ (1-iP)*(a + c1) + iP*(a + c2) + b2),
-        nlf(TransOld ~ a + b2),
-        nlf(TransNew ~ a + b2),
-        nlf(OutSame ~ iP*(ra*a + rc*c1 + b2) + (1-iP)*(-100)),
-        nlf(OutOther ~ ra*a + b2),
+        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b2),
+        nlf(TransOld ~ a1 + b2),
+        nlf(TransNew ~ a2 + b2),
+        nlf(OutSame ~ iP*(ra*a1 + rc*c1 + b2) + (1-iP)*(-100)),
+        nlf(OutOther ~ ra*a1 + b2),
         nlf(NPLtrained ~ b2),
         nlf(NPLuntrained ~ b1),
-        nlf(a ~ ya + ba*t),
+        nlf(a1 ~ ya1 + ba1*t),
+        nlf(a2 ~ ya2 + ba2*t),
         nlf(c1 ~ yc1 + bc1*t),
         nlf(c2 ~ yc2 + bc2*t),
         nlf(ra ~ inv_logit(yra + bra*t)),
         nlf(rc ~ inv_logit(yrc + brc*t)),
-        nlf(b2 ~ b + bb*t),
+        nlf(b2 ~ b + g*t),
         nlf(b1 ~ b),
-        ya ~ 1 + (1 || participant),
-        ba ~ 1 + (1 || participant),
+        ya1 ~ 1 + (1 || participant),
+        ba1 ~ 1 + (1 || participant),
+        ya2 ~ 1 + (1 || participant),
+        ba2 ~ 1 + (1 || participant),
         yc1 ~ 1 + (1 || participant),
         bc1 ~ 1 + (1 || participant),
         yc2 ~ 1 + (1 || participant),
@@ -843,10 +855,49 @@ genM3Form <- function(phase="train",test="linear") {
         bra ~ 1 + (1 || participant),
         yrc ~ 1 + (1 || participant),
         brc ~ 1 + (1 || participant),
-        bb ~ 1 + (1 || participant),
+        g ~ 1 + (1 || participant),
         b ~ 1,
         nl = TRUE
     )
+    #   M3_formula <- bf(
+    #     y | trials(nRet) ~ Correct + log(nCorrect),
+    #     nlf(mu2 ~ TransOld + log(nTransOld)),
+    #     nlf(mu3 ~ TransNew + log(nTransNew)),
+    #     nlf(mu4 ~ OutSame + log(nOutSame)),
+    #     nlf(mu5 ~ OutOther + log(nOutOther)),
+    #     nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+    #     nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+    #     nlf(Correct ~ (1-iP)*(a + c1) + iP*(a + c2) + b2),
+    #     nlf(TransOld ~ a + b2),
+    #     nlf(TransNew ~ a + b2),
+    #     nlf(OutSame ~ iP*(ra*a + rc*c1 + b2) + (1-iP)*(-100)),
+    #     nlf(OutOther ~ ra*a + b2),
+    #     nlf(NPLtrained ~ b2),
+    #     nlf(NPLuntrained ~ b1),
+    #     nlf(a ~ ya + (sa - ya)*(inv_logit(exp(ba)*t)-0.5)*2),
+    #     nlf(c1 ~ yc1 + (sc1 - yc1)*(inv_logit(exp(bc1)*t)-0.5)*2),
+    #     nlf(c2 ~ yc2 + (sc2 - yc2)*(inv_logit(exp(bc2)*t)-0.5)*2),
+    #     nlf(ra ~ inv_logit(yra + bra*t)),
+    #     nlf(rc ~ inv_logit(yrc + brc*t)),
+    #     nlf(b2 ~ b + g*t),
+    #     nlf(b1 ~ b),
+    #     ya ~ 1 + (1 || participant),
+    #     sa ~ 1 + (1 || participant),
+    #     ba ~ 1 + (1 || participant),
+    #     yc1 ~ 1 + (1 || participant),
+    #     sc1 ~ 1 + (1 || participant),
+    #     bc1 ~ 1 + (1 || participant),
+    #     yc2 ~ 1 + (1 || participant),
+    #     sc2 ~ 1 + (1 || participant),
+    #     bc2 ~ 1 + (1 || participant),
+    #     yra ~ 1 + (1 || participant),
+    #     bra ~ 1 + (1 || participant),
+    #     yrc ~ 1 + (1 || participant),
+    #     brc ~ 1 + (1 || participant),
+    #     g ~ 1 + (1 || participant),
+    #     b ~ 1,
+    #     nl = TRUE
+    # )
     } else {
       M3_formula <- bf(
         y | trials(nRet) ~ Correct + log(nCorrect),
@@ -863,7 +914,7 @@ genM3Form <- function(phase="train",test="linear") {
         nlf(OutOther ~ inv_logit(ra)*a1 + b2),
         nlf(NPLtrained ~ b2),
         nlf(NPLuntrained ~ b1),
-        nlf(b2 ~ b + bb),
+        nlf(b2 ~ b + g),
         nlf(b1 ~ b),
         a1 ~ 0 + condition + (0 + condition || participant),
         c1 ~ 0 + condition + (0 + condition || participant),
@@ -871,13 +922,67 @@ genM3Form <- function(phase="train",test="linear") {
         c2 ~ 0 + condition + (0 + condition || participant),
         ra ~ 0 + condition + (0 + condition || participant),
         rc ~ 0 + condition + (0 + condition || participant),
-        bb ~ 1 + (1 || participant),
+        g ~ 0 + condition + (0 + condition || participant),
         b ~ 1,
         nl = TRUE
       )
     }
     
   } else {
+    # M3_formula <- bf(
+    #     y | trials(nRet) ~ Correct + log(nCorrect),
+    #     nlf(mu2 ~ TransOld + log(nTransOld)),
+    #     nlf(mu3 ~ TransNew + log(nTransNew)),
+    #     nlf(mu4 ~ OutSame + log(nOutSame)),
+    #     nlf(mu5 ~ OutOther + log(nOutOther)),
+    #     nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+    #     nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+    #     nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + g + iM*b2 + (1-iM)*b1),
+    #     nlf(TransOld ~ a1 + (1-iP)*g + iC*b2 + (1-iC)*b1),
+    #     nlf(TransNew ~ a2 + iP*g + iC*b1 + (1-iC)*b2),
+    #     nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + iC*b2 + (1-iC)*b1) + (1-iP)*(-100)),
+    #     nlf(OutOther ~ inv_logit(ra)*a1 + (1-iP)*g + iC*b2 + (1-iC)*b1),
+    #     nlf(NPLtrained ~ b2 + iM*g),
+    #     nlf(NPLuntrained ~ b1 + (1-iM)*g),
+    #     # nlf(b2 ~ b + bb),
+    #     nlf(b2 ~ b),
+    #     nlf(b1 ~ b),
+    #     a1 ~ 0 + condition + (0 + condition || participant),
+    #     c1 ~ 0 + condition + (0 + condition || participant),
+    #     a2 ~ 0 + condition + (0 + condition || participant),
+    #     c2 ~ 0 + condition + (0 + condition || participant),
+    #     ra ~ 0 + condition + (0 + condition || participant),
+    #     rc ~ 0 + condition + (0 + condition || participant),
+    #     g ~ 1 + (1 || participant),
+    #     # bb ~ 1 + (1 || participant),
+    #     b ~ 1,
+    #     nl = TRUE
+    #   )
+    # M3_formula <- bf(
+    #     y | trials(nRet) ~ Correct + log(nCorrect),
+    #     nlf(mu2 ~ TransOld + log(nTransOld)),
+    #     nlf(mu3 ~ TransNew + log(nTransNew)),
+    #     nlf(mu4 ~ OutSame + log(nOutSame)),
+    #     nlf(mu5 ~ OutOther + log(nOutOther)),
+    #     nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+    #     nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+    #     nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + g + b),
+    #     nlf(TransOld ~ a1 + (1-iP)*g + b),
+    #     nlf(TransNew ~ a2 + iP*g + b),
+    #     nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) + (1-iP)*(-100)),
+    #     nlf(OutOther ~ inv_logit(ra)*a1 + (1-iP)*g + b),
+    #     nlf(NPLtrained ~ b + iM*g),
+    #     nlf(NPLuntrained ~ b + (1-iM)*g),
+    #     a1 ~ 0 + condition + (0 + condition || participant),
+    #     c1 ~ 0 + condition + (0 + condition || participant),
+    #     a2 ~ 0 + condition + (0 + condition || participant),
+    #     c2 ~ 0 + condition + (0 + condition || participant),
+    #     ra ~ 0 + condition + (0 + condition || participant),
+    #     rc ~ 0 + condition + (0 + condition || participant),
+    #     g ~ 0 + condition + (0 + condition || participant),
+    #     b ~ 1,
+    #     nl = TRUE
+    #   )
     M3_formula <- bf(
         y | trials(nRet) ~ Correct + log(nCorrect),
         nlf(mu2 ~ TransOld + log(nTransOld)),
@@ -886,22 +991,19 @@ genM3Form <- function(phase="train",test="linear") {
         nlf(mu5 ~ OutOther + log(nOutOther)),
         nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
         nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
-        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + iM*b2 + (1-iM)*b1),
-        nlf(TransOld ~ a1 + iC*b2 + (1-iC)*b1),
-        nlf(TransNew ~ a2 + iC*b1 + (1-iC)*b2),
-        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + iC*b2 + (1-iC)*b1) + (1-iP)*(-100)),
-        nlf(OutOther ~ inv_logit(ra)*a1 + iC*b2 + (1-iC)*b1),
-        nlf(NPLtrained ~ b2),
-        nlf(NPLuntrained ~ b1),
-        nlf(b2 ~ b + bb),
-        nlf(b1 ~ b),
+        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
+        nlf(TransOld ~ a1 + b),
+        nlf(TransNew ~ a2 + b),
+        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) + (1-iP)*(-100)),
+        nlf(OutOther ~ inv_logit(ra)*a1 + b),
+        nlf(NPLtrained ~ b),
+        nlf(NPLuntrained ~ b),
         a1 ~ 0 + condition + (0 + condition || participant),
         c1 ~ 0 + condition + (0 + condition || participant),
         a2 ~ 0 + condition + (0 + condition || participant),
         c2 ~ 0 + condition + (0 + condition || participant),
         ra ~ 0 + condition + (0 + condition || participant),
         rc ~ 0 + condition + (0 + condition || participant),
-        bb ~ 0 + condition + (1 || participant),
         b ~ 1,
         nl = TRUE
       )
@@ -915,8 +1017,10 @@ genM3Prior <- function(phase="train", test="linear") {
   
     if (phase == "train" & test=="linear") {
       M3_prior <- c(
-        prior(normal(3,1), class = "b", nlpar = "ya"),
-        prior(normal(0,0.5), class = "b", nlpar = "ba"),
+        prior(normal(3,1), class = "b", nlpar = "ya1"),
+        prior(normal(0,0.5), class = "b", nlpar = "ba1"),
+        prior(normal(3,1), class = "b", nlpar = "ya2"),
+        prior(normal(0,0.5), class = "b", nlpar = "ba2"),
         prior(normal(3,1), class = "b", nlpar = "yc1"),
         prior(normal(0,0.5), class = "b", nlpar = "bc1"),
         prior(normal(3,1), class = "b", nlpar = "yc2"),
@@ -925,9 +1029,37 @@ genM3Prior <- function(phase="train", test="linear") {
         prior(normal(0,1), class = "b", nlpar = "bra"),
         prior(logistic(0,1), class = "b", nlpar = "yrc"),
         prior(normal(0,1), class = "b", nlpar = "brc"),
-        prior(normal(0, 0.5), class = "b", nlpar = "bb"),
+        prior(normal(0, 0.5), class = "b", nlpar = "g"),
         prior(constant(0), class = "b", nlpar = "b")
       )
+      # M3_prior <- c(
+      #   prior(normal(3,1), class = "b", nlpar = "ya", lb = 0),
+      #   prior(normal(3,1), class = "b", nlpar = "sa", lb = 0),
+      #   prior(normal(0,0.5), class = "b", nlpar = "ba"),
+      #   prior(normal(3,1), class = "b", nlpar = "yc1", lb = 0),
+      #   prior(normal(3,1), class = "b", nlpar = "sc1", lb = 0),
+      #   prior(normal(0,0.5), class = "b", nlpar = "bc1"),
+      #   prior(normal(3,1), class = "b", nlpar = "yc2", lb = 0),
+      #   prior(normal(3,1), class = "b", nlpar = "sc2", lb = 0),
+      #   prior(normal(0,0.5), class = "b", nlpar = "bc2"),
+      #   prior(logistic(0,1), class = "b", nlpar = "yra"),
+      #   prior(normal(0,1), class = "b", nlpar = "bra"),
+      #   prior(logistic(0,1), class = "b", nlpar = "yrc"),
+      #   prior(normal(0,1), class = "b", nlpar = "brc"),
+      #   prior(normal(0, 0.5), class = "b", nlpar = "g"),
+      #   prior(constant(0), class = "b", nlpar = "b")
+      # )
+    } else if (phase == "train" & test=="condition") {
+      M3_prior <- c(
+        prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
+        prior(normal(3,1), class = "b", nlpar = "a2", lb = 0), 
+        prior(normal(3,1), class = "b", nlpar = "c1", lb = 0),
+        prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
+        prior(logistic(0,1), class = "b", nlpar = "ra"),
+        prior(logistic(0,1), class = "b", nlpar = "rc"),
+        prior(normal(0, 1), class = "b", nlpar = "g"),
+        prior(constant(0), class = "b", nlpar = "b")
+        )
     } else {
       M3_prior <- c(
         prior(normal(3,1), class = "b", nlpar = "a1", lb = 0), 
@@ -936,7 +1068,8 @@ genM3Prior <- function(phase="train", test="linear") {
         prior(normal(3,1), class = "b", nlpar = "c2", lb = 0),
         prior(logistic(0,1), class = "b", nlpar = "ra"),
         prior(logistic(0,1), class = "b", nlpar = "rc"),
-        prior(normal(0, 0.5), class = "b", nlpar = "bb"),
+        # prior(normal(0, 0.5), class = "b", nlpar = "bb"),
+        # prior(normal(0, 1), class = "b", nlpar = "g"),
         prior(constant(0), class = "b", nlpar = "b")
         )
     }
@@ -1010,9 +1143,9 @@ smart_runFun(
     save_pars = save_pars(all = TRUE),
     sample_prior = "yes",
     init = 0,
-    file = paste0(model_path, "Model_Exp3_M3_Testing")
+    file = paste0(model_path, "Model_Exp3_M3_Testing_nog")
     ),
-  name = "Model_Exp3_M3_Testing"
+  name = "Model_Exp3_M3_Testing_nog"
 )
 
 
@@ -1055,8 +1188,8 @@ plot(Hypothesis)
 
 ```{r}
 
-# The original model
-Model_M3 <- read_rds(str_glue("{model_path}Model_Exp2_M3_Softmax_nonlinear_a.rds"))
+# Training model ---------------------------------------------------------------
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp3_M3_Training.rds"))
 
 Post_M3 <- Model_M3 %>% 
   gather_draws(`b_.*`, regex = TRUE) %>% 
@@ -1064,29 +1197,27 @@ Post_M3 <- Model_M3 %>%
   rename(post = .value)
 
 # Save the posterior
-write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_nonlinear.rds"))
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_Training.rds"))
 
-# condition --------------------------------------------------------------------
 
-Model_M3 <- read_rds(str_glue("{model_path}Model_{task}_M3_Softmax_condition.rds"))
+
+# Testing ----------------------------------------------------------------------
+
+Model_M3 <- read_rds(str_glue("{model_path}Model_Exp3_M3_Testing_baseline2.rds"))
 
 Post_M3 <- Model_M3 %>% 
-  extractPost("condition", par_name = "M3_par") %>% 
-  filter(!is.na(post), M3_par!="b") %>% 
-  pivot_wider(names_from = M3_par, values_from = post) %>% 
-  filter(!is.na(condition)) %>% 
-  rowwise() %>% 
+  extractPost("condition", par_name = "par") %>% 
+  filter(!is.na(post), condition!="Intercept") %>% 
   mutate(
-    a2 = ifelse("a2" %in% names(.), a2, a1),
-    ra = ifelse("ra" %in% names(.), inv_logit_scaled(ra), 1),
-    rc = ifelse("rc" %in% names(.), inv_logit_scaled(rc), 1)
-    ) %>% 
-  ungroup() %>% 
-  select(.chain, .iteration, .draw, condition, a1, a2, c1, c2, ra, rc)
+    post = ifelse(str_detect(par,"r"), inv_logit_scaled(post), post),
+    condition = case_when(
+      condition=="A" & par %in% c("a1","c1","ra","rc") ~ "familiar",
+      condition=="B" & par %in% c("a2","c2") ~ "familiar",
+      TRUE ~ "unfamiliar"
+    )
+  )
 
-# Save the posterior
-write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_condition.rds"))
-
+write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_Testing.rds"))
 
 ```
 

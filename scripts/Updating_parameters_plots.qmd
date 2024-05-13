@@ -23,8 +23,8 @@ knitr::opts_chunk$set(echo = TRUE)
 graphics.off()
 rm(list=ls(all.names=TRUE))
 options(digits = 3)
-options(ggplot2.discrete.colour= c("#ff7700","#2F7FC1"))
-options(ggplot2.discrete.fill= c("#ff7700","#2F7FC1"))
+options(ggplot2.discrete.colour= c("#2F7FC1", "#ff7700"))
+options(ggplot2.discrete.fill= c("#2F7FC1", "#ff7700"))
 ```
 
 ## 1.2 Packages, theme setting and path
@@ -75,7 +75,9 @@ Post_Exp1_M3 <- str_glue("{data_path}Post_Exp1_M3.rds") %>% readRDS()
 Post_Exp2_M3_nonlinear <- str_glue("{data_path}Post_Exp2_M3_nonlinear.rds") %>% readRDS()
 Post_Exp2_M3_condition <- str_glue("{data_path}Post_Exp2_M3_condition.rds") %>% readRDS()
 
-
+# Experiment 3
+Post_Exp3_M3_Training <- str_glue("{data_path}Post_Exp3_M3_Training.rds") %>% readRDS()
+Post_Exp3_M3_Testing <- str_glue("{data_path}Post_Exp3_M3_Testing.rds") %>% readRDS()
 
 ```
 
@@ -509,3 +511,291 @@ ggplot2::ggsave(
 )
 
 ```
+
+
+
+# 5 Experiment 3 (Training)
+
+## 5.1 Data preparation
+```{r}
+
+Table_Exp3_Training_pars <- Post_Exp3_M3_Training %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(par)
+  )
+
+
+
+
+memory_fun <- function(t, start, asy, slope) {
+  
+  y <- start + (asy - start)*(inv_logit_scaled(exp(slope)*t)-0.5)*2
+  
+  return(y)
+  
+}
+
+
+removal_fun <- function(t, intercept, slope) {
+  
+  y <- brms::inv_logit_scaled(intercept + slope * t)
+  
+  return(y)
+}
+
+Table_Exp3_Training_curve <- Post_Exp3_M3_Training %>% 
+  pivot_wider(names_from = par, values_from = post) %>%
+  cross_join(data.frame(t=seq(0,5,0.1))) %>% 
+  smartr::mutate_form(formulas = c(
+    a1 ~ ya1 + ba1*t,
+    a2 ~ ya2 + ba2*t,
+    c1 ~ yc1 + bc1*t,
+    c2 ~ yc2 + bc2*t,
+    ra ~ inv_logit_scaled(yra + bra*t),
+    rc ~ inv_logit_scaled(yrc + brc*t))
+  ) %>% 
+  select(t,a1,c1,a2,c2,ra,rc) %>% 
+  pivot_longer(cols = c(a1,c1,a2,c2,ra,rc), names_to = "par", values_to = "post") %>% 
+  summarise(
+    mean = mean(post),
+    lower = quantile(post, 0.025),
+    upper = quantile(post, 0.975),
+    .by = c(par, t)
+  ) %>% 
+  mutate(
+    item = case_when(
+      str_detect(par,"1") ~ "Original items",
+      str_detect(par,"2") ~ "New items",
+      str_detect(par,"r") ~ "Outdated items"),
+    item = factor(
+      item,
+      levels = c("Original items","New items","Outdated items")),
+    memory = ifelse(str_detect(par,"a"),"Item memory","Binding memory"),
+    memory = factor(
+      memory,
+      levels = c("Item memory","Binding memory")))
+
+
+```
+
+## 5.2 Removal
+
+### 5.2.1 Parameters
+
+```{r}
+
+Plot_Exp3_r_par <- Table_Exp3_Training_pars %>%
+  filter(par %in% c("yra","yrc","bra","brc")) %>% 
+  mutate(
+    memory = ifelse(str_detect(par,"ra"),"Item memory","Binding memory"),
+    memory = factor(memory, levels = c("Item memory","Binding memory")),
+    parType = ifelse(str_detect(par,"y"), "Intercept", "Slope"),
+  ) %>% 
+  ggplot(aes(x = memory, y = post)) +
+  gghalves::geom_half_violin(
+    fill = "#615F63",
+    side = "l", 
+    nudge = 0.1, 
+    trim = TRUE) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_wrap(~ parType)+
+  # ylim(0,1)+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.title = element_blank())
+
+
+```
+
+### 5.2.2 Curve
+
+```{r}
+
+
+Plot_r_curve <- Table_Exp3_Training_curve %>% 
+  filter(par %in% c("ra","rc")) %>% 
+  ggplot(aes(x = t, y = mean, group = memory, fill = memory))+
+  geom_line(linewidth=0.8)+
+  geom_ribbon(aes(ymin=lower, ymax=upper),alpha=0.5)
+
+
+
+
+ggplot2::ggsave(
+  plot = Plot_r,
+  path = figure_path,
+  filename = "Plot_Exp2_curve_r.pdf",
+  width = 6, height = 4
+)
+
+```
+
+
+
+## 5.3 Memory parameters
+
+### Parameters
+```{r}
+
+Plot_Exp3_ac_par <- Post_Exp3_Training_pars %>%
+  filter(par %in% c("ya","yc1","yc2","sa","sc1","sc2","ba","bc1","bc2")) %>% 
+  mutate(
+    memory = case_when(
+      str_detect(par,"a") ~ "Item memory",
+      str_detect(par,"c1") ~ "Binding memory (Original items)",
+      str_detect(par,"c2") ~ "Binding memory (New items)"),
+    memory = factor(
+      memory, 
+      levels = c("Item memory","Binding memory (Original items)", "Binding memory (New items)")),
+    parType = case_when(
+      str_detect(par,"y") ~ "Intercept", 
+      str_detect(par,"s") ~ "Asymptote",
+      str_detect(par,"b")~ "Slope"),
+  ) %>% 
+  ggplot(aes(x = "par", y = post)) +
+  gghalves::geom_half_violin(
+    fill = "#615F63",
+    side = "l", 
+    nudge = 0.1, 
+    trim = TRUE) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_grid(memory~parType, scales = "free")+
+  theme(
+    legend.position = "none",
+    axis.text = element_text(size = 11),
+    strip.text = element_text(size = 10.5),
+    axis.title = element_blank(),
+    axis.text.x = element_blank())
+
+ggsave(
+  plot = Plot_Exp2_ac_par,
+  path = figure_path,
+  filename = "Plot_Exp2_M3_par_ac.pdf",
+  width = 10, height = 5
+)
+
+
+```
+
+
+### 5.3 Plot curve
+
+```{r}
+
+Plot_r_curve <- Table_Exp3_Training_curve %>% 
+  filter(par %in% c("a1","c1","a2","c2")) %>% 
+  ggplot(aes(x = t, y = mean, group = memory))+
+  geom_line(linewidth=0.8)+
+  geom_ribbon(aes(ymin=lower, ymax=upper, fill = memory),alpha=0.5)+
+  facet_wrap(~ item)
+
+```
+
+
+
+# Experiment 3 (Testing)
+
+## 3.1 Data preparation
+```{r}
+
+Table_Exp3_Testing <- Post_Exp3_M3_Testing %>% 
+  filter(
+   post > quantile(post, 0.005),
+   post < quantile(post, 0.995),
+   .by = c(condition, par)
+  ) %>% 
+  mutate(
+    condition = factor(
+      condition,
+      levels = c("familiar","unfamiliar"),
+      labels = c("Familiar(trained)","Unfamiliar(Untrained)")
+    )
+  )
+
+
+```
+
+## 3.2 Removal parameters
+
+```{r}
+
+Plot_Exp3_r <- Table_Exp3_Testing %>%
+  filter(par %in% c("ra","rc")) %>% 
+  mutate(par = factor(
+    par,
+    levels = c("ra","rc"),
+    labels = c("Item memory", "Binding memory")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1, trim = TRUE) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  facet_wrap(~ par)+
+  labs(fill = "Condition")+
+  ylim(0,1)+
+  theme_par
+
+ggsave(
+  plot = Plot_Exp3_r,
+  path = figure_path,
+  filename = "Plot_Exp3_M3_r.pdf",
+  width = 8, height = 4
+)
+
+```
+
+## 3.3 Memory parameters
+
+```{r}
+
+Plot_Exp3_Testing_a <- Table_Exp3_Testing %>%
+  filter(par %in% c("a1", "a2")) %>% 
+  mutate(par = factor(
+    par,
+    levels = c("a1","a2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Item memory", tag = "A", fill = "Condition")+
+  ylim(0,5)+
+  facet_grid( ~ par)+
+  theme_par+
+  theme(
+    legend.position = "inside",
+    legend.justification = c(1,1),
+    legend.position.inside = c(0.98,0.98))
+
+
+Plot_Exp3_Testing_c <- Table_Exp3_Testing %>%
+  filter(par %in% c("c1", "c2")) %>% 
+  mutate(par = factor(
+    par,
+    levels = c("c1","c2"),
+    labels = c("Original items", "New items")
+  )) %>% 
+  ggplot(aes(x = condition, y = post, fill = condition)) +
+  gghalves::geom_half_violin(side = "l", nudge = 0.1) +
+  stat_summary(fun.data = median_hdi, show.legend = FALSE)+
+  labs(title = "Binding memory", tag = "B")+
+  ylim(0,5)+
+  facet_grid( ~ par)+
+  theme_par+
+  theme(
+    legend.position = "none")
+
+Plot_Exp3_Testing_ac <- ggarrange(Plot_Exp3_Testing_a, Plot_Exp3_Testing_c, nrow = 2, common.legend = FALSE)
+
+ggsave(
+  plot = Plot_Exp1_M3_ac,
+  path = figure_path,
+  filename = "Plot_Exp1_M3_ac.pdf",
+  width = 10, height = 4
+)
+
+```
+
