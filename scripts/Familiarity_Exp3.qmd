@@ -201,7 +201,7 @@ Table_Test_NPL <- Data_Test %>%
 
 Table_Test <- Data_Test %>% 
   select(
-    participant, condition, updPos, ends_with("New"), ends_with("Old"), starts_with("Out")) %>% 
+    participant, condition, ends_with("New"), ends_with("Old"), starts_with("Out")) %>% 
   pivot_longer(
     cols = c(ends_with("New"), ends_with("Old"), starts_with("Out")), 
     names_to = "response", values_to = "value") %>% 
@@ -223,7 +223,7 @@ Table_Test <- Data_Test %>%
       levels = c("trained","untrained"),
       labels = c("Familiar (Trained)","Unfamiliar (Untrained)"))
   ) %>% 
-  summarySE(DV = value, within = c("char"), between = c("response","updPos"), group = "participant") %>% 
+  summarySE(DV = value, within = c("char"), between = c("response"), group = "participant") %>% 
   mutate( 
     # correct error bar
     upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
@@ -984,29 +984,32 @@ genM3Form <- function(phase="train",test="linear") {
     #     nl = TRUE
     #   )
     M3_formula <- bf(
-        y | trials(nRet) ~ Correct + log(nCorrect),
-        nlf(mu2 ~ TransOld + log(nTransOld)),
-        nlf(mu3 ~ TransNew + log(nTransNew)),
-        nlf(mu4 ~ OutSame + log(nOutSame)),
-        nlf(mu5 ~ OutOther + log(nOutOther)),
-        nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
-        nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
-        nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + b),
-        nlf(TransOld ~ a1 + b),
-        nlf(TransNew ~ a2 + b),
-        nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + b) + (1-iP)*(-100)),
-        nlf(OutOther ~ inv_logit(ra)*a1 + b),
-        nlf(NPLtrained ~ b),
-        nlf(NPLuntrained ~ b),
-        a1 ~ 0 + condition + (0 + condition || participant),
-        c1 ~ 0 + condition + (0 + condition || participant),
-        a2 ~ 0 + condition + (0 + condition || participant),
-        c2 ~ 0 + condition + (0 + condition || participant),
-        ra ~ 0 + condition + (0 + condition || participant),
-        rc ~ 0 + condition + (0 + condition || participant),
-        b ~ 1,
-        nl = TRUE
-      )
+    y | trials(nRet) ~ Correct + log(nCorrect),
+    nlf(mu2 ~ TransOld + log(nTransOld)),
+    nlf(mu3 ~ TransNew + log(nTransNew)),
+    nlf(mu4 ~ OutSame + log(nOutSame)),
+    nlf(mu5 ~ OutOther + log(nOutOther)),
+    nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+    nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+    nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + iM*b2 + (1-iM)*b1),
+    nlf(TransOld ~ a1 + iM*b2 + (1-iM)*b1),
+    nlf(TransNew ~ a2 + iM*b2 + (1-iM)*b1),
+    nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + iM*b2 + (1-iM)*b1) + (1-iP)*(-100)),
+    nlf(OutOther ~ inv_logit(ra)*a1 + iM*b2 + (1-iM)*b1),
+    nlf(NPLtrained ~ b2),
+    nlf(NPLuntrained ~ b1),
+    nlf(b2 ~ b + g),
+    nlf(b1 ~ b),
+    a1 ~ 0 + condition + (0 + condition || participant),
+    c1 ~ 0 + condition + (0 + condition || participant),
+    a2 ~ 0 + condition + (0 + condition || participant),
+    c2 ~ 0 + condition + (0 + condition || participant),
+    ra ~ 0 + condition + (0 + condition || participant),
+    rc ~ 0 + condition + (0 + condition || participant),
+    g ~ 0 + condition + (0 + condition || participant),
+    b ~ 1,
+    nl = TRUE
+  )
     
   }
   
@@ -1069,7 +1072,7 @@ genM3Prior <- function(phase="train", test="linear") {
         prior(logistic(0,1), class = "b", nlpar = "ra"),
         prior(logistic(0,1), class = "b", nlpar = "rc"),
         # prior(normal(0, 0.5), class = "b", nlpar = "bb"),
-        # prior(normal(0, 1), class = "b", nlpar = "g"),
+        prior(normal(0, 1), class = "b", nlpar = "g"),
         prior(constant(0), class = "b", nlpar = "b")
         )
     }
@@ -1218,6 +1221,74 @@ Post_M3 <- Model_M3 %>%
   )
 
 write_rds(Post_M3, str_glue("./figures/figures-Data/Post_{task}_M3_Testing.rds"))
+
+```
+
+### 4.2.6 Plot Predicted resutls
+
+```{r}
+
+Table_Test_filtered <- Data_Test %>% 
+  filter(NoRes==0) %>% 
+  select(
+    participant, condition, updPos, ends_with("New"), ends_with("Old"), starts_with("Out")) %>% 
+  pivot_longer(
+    cols = c(ends_with("New"), ends_with("Old"), starts_with("Out")), 
+    names_to = "response", values_to = "value") %>% 
+  mutate(
+    char = case_when(
+      condition == "A" & response == "CorrectOld" ~ "trained",
+      condition == "A" & response == "TransOld" ~ "trained",
+      condition == "B" & response == "CorrectNew" ~ "trained",
+      condition == "B" & response == "TransNew" ~ "trained",
+      condition == "A" & str_detect(response, "Out") ~ "trained",
+      
+      condition == "B" & response == "CorrectOld" ~ "untrained",
+      condition == "B" & response == "TransOld" ~ "untrained",
+      condition == "A" & response == "CorrectNew" ~ "untrained",
+      condition == "A" & response == "TransNew" ~ "untrained",
+      condition == "B" & str_detect(response, "Out") ~ "untrained"),
+    char = factor(
+      char, 
+      levels = c("trained","untrained"),
+      labels = c("Familiar (Trained)","Unfamiliar (Untrained)"))
+  ) %>% 
+  summarySE(DV = value, within = c("char"), between = c("response","updPos"), group = "participant") %>% 
+  mutate( 
+    # correct error bar
+    upper = ifelse(abs(mean) < 1e-5, 0, mean + ci),
+    lower = ifelse(abs(mean) < 1e-5, 0, mean - ci)) %>% 
+  select(!c(ci,se,n)) %>% 
+  mutate(title = "Testing phase")
+
+
+M3_formula <- bf(
+    y | trials(nRet) ~ Correct + log(nCorrect),
+    nlf(mu2 ~ TransOld + log(nTransOld)),
+    nlf(mu3 ~ TransNew + log(nTransNew)),
+    nlf(mu4 ~ OutSame + log(nOutSame)),
+    nlf(mu5 ~ OutOther + log(nOutOther)),
+    nlf(mu6 ~ NPLtrained + log(nNPLtrained)),
+    nlf(mu7 ~ NPLuntrained + log(nNPLuntrained)),
+    nlf(Correct ~ (1-iP)*(a1 + c1) + iP*(a2 + c2) + iM*b2 + (1-iM)*b1),
+    nlf(TransOld ~ a1 + iM*b2 + (1-iM)*b1),
+    nlf(TransNew ~ a2 + iM*b2 + (1-iM)*b1),
+    nlf(OutSame ~ iP*(inv_logit(ra)*a1 + inv_logit(rc)*c1 + iM*b2 + (1-iM)*b1) + (1-iP)*(-100)),
+    nlf(OutOther ~ inv_logit(ra)*a1 + iM*b2 + (1-iM)*b1),
+    nlf(NPLtrained ~ b2),
+    nlf(NPLuntrained ~ b1),
+    nlf(b2 ~ b + g),
+    nlf(b1 ~ b),
+    a1 ~ 0 + condition + (0 + condition || participant),
+    c1 ~ 0 + condition + (0 + condition || participant),
+    a2 ~ 0 + condition + (0 + condition || participant),
+    c2 ~ 0 + condition + (0 + condition || participant),
+    ra ~ 0 + condition + (0 + condition || participant),
+    rc ~ 0 + condition + (0 + condition || participant),
+    g ~ 0 + condition + (0 + condition || participant),
+    b ~ 1,
+    nl = TRUE
+  )
 
 ```
 
